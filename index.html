@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AstraToonix Open World</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;overflow:hidden;background:#0a0a12;font-family:'Rajdhani',sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+
+    /* PORTRAIT OVERLAY — z-index 8000, below loading (10000), has dismiss button */
+    #portrait-overlay{display:none;position:fixed;inset:0;z-index:8000;background:linear-gradient(135deg,#0d0d1f,#1a0a2e);flex-direction:column;align-items:center;justify-content:center;gap:18px}
+    #portrait-overlay.visible{display:flex}
+    .rotate-icon{font-size:64px;animation:rotAnim 1.8s ease-in-out infinite}
+    @keyframes rotAnim{0%,100%{transform:rotate(0)}40%,60%{transform:rotate(90deg)}}
+    #portrait-overlay h2{font-family:'Orbitron',monospace;color:#7efff5;font-size:clamp(.9rem,5vw,1.3rem);text-align:center;letter-spacing:2px;text-shadow:0 0 20px #7efff580}
+    #portrait-overlay p{color:#8899bb;font-size:.85rem;letter-spacing:1px}
+    #portrait-play-btn{margin-top:6px;background:rgba(126,255,245,.12);border:2px solid #7efff5;color:#7efff5;font-family:'Orbitron',monospace;font-size:.65rem;letter-spacing:2px;padding:10px 24px;border-radius:6px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+
+    /* CANVAS */
+    #game-canvas{position:fixed;top:0;left:0;display:block;width:100%!important;height:100%!important}
+
+    /* HUD */
+    #hud{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:linear-gradient(180deg,rgba(0,0,0,.65) 0%,transparent 100%);pointer-events:none}
+    #hud-left{display:flex;flex-direction:column;gap:3px}
+    .hud-label{font-family:'Orbitron',monospace;font-size:.55rem;color:#7efff5;letter-spacing:2px}
+    .health-bar-wrap{width:110px;height:8px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
+    #player-health-bar{height:100%;width:100%;background:linear-gradient(90deg,#00ff88,#7efff5);border-radius:4px;transition:width .3s ease}
+    #hud-center{font-family:'Orbitron',monospace;font-size:clamp(.5rem,2.5vw,.72rem);color:#fff;letter-spacing:3px;text-shadow:0 0 12px #7efff5}
+    #hud-right{font-family:'Orbitron',monospace;font-size:.52rem;color:#ffcc44;letter-spacing:1px;text-align:right}
+
+    /* DEV CREDIT — IDENTITY PROTECTION ANCHOR — DO NOT ALTER */
+    #dev-credit{position:fixed;bottom:5px;left:50%;transform:translateX(-50%);z-index:200;font-family:'Orbitron',monospace;font-size:.42rem;color:rgba(126,255,245,.3);letter-spacing:2px;pointer-events:none}
+
+    /* ZONE NOTICE */
+    #zone-notice{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:110;font-family:'Orbitron',monospace;font-size:clamp(.65rem,3vw,.95rem);color:#fff;letter-spacing:3px;text-shadow:0 0 18px #7efff5;opacity:0;transition:opacity .5s;pointer-events:none;white-space:nowrap}
+    #zone-notice.show{opacity:1}
+
+    /* ENGINE DISABLED */
+    #engine-disabled-overlay{display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.93);flex-direction:column;align-items:center;justify-content:center;gap:14px}
+    #engine-disabled-overlay.visible{display:flex}
+    #engine-disabled-overlay h2{font-family:'Orbitron',monospace;color:#ff4455;font-size:1.1rem;letter-spacing:3px;text-shadow:0 0 20px #ff4455}
+    #engine-disabled-overlay p{color:#8899bb;font-size:.78rem;letter-spacing:1px}
+
+    /* TRANSITION */
+    #transition-overlay{position:fixed;inset:0;z-index:500;background:#000;opacity:0;pointer-events:none;transition:opacity .4s ease}
+    #transition-overlay.fade{opacity:1;pointer-events:all}
+
+    /* TOAST */
+    #toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:300;background:rgba(0,0,0,.82);border:1px solid #7efff540;border-radius:8px;padding:7px 16px;font-family:'Rajdhani',sans-serif;font-size:.82rem;color:#7efff5;letter-spacing:1px;opacity:0;pointer-events:none;transition:opacity .3s;backdrop-filter:blur(8px);white-space:nowrap}
+    #toast.show{opacity:1}
+
+    /* VEHICLE HUD */
+    #vehicle-hud{position:fixed;bottom:130px;right:14px;z-index:110;display:none;flex-direction:column;align-items:flex-end;gap:4px}
+    #vehicle-hud.visible{display:flex}
+    #speed-display{font-family:'Orbitron',monospace;font-size:clamp(1.2rem,6vw,1.8rem);color:#ffcc44;text-shadow:0 0 12px #ffcc4480}
+    #speed-unit{font-family:'Rajdhani',sans-serif;font-size:.62rem;color:#8899bb;letter-spacing:2px}
+    #headlight-btn{background:rgba(0,0,0,.6);border:1px solid #ffcc44;color:#ffcc44;font-family:'Orbitron',monospace;font-size:.48rem;letter-spacing:1px;padding:5px 10px;border-radius:4px;cursor:pointer;pointer-events:all;-webkit-tap-highlight-color:transparent}
+
+    /* JOYSTICK */
+    #joystick-zone{position:fixed;bottom:18px;left:18px;width:110px;height:110px;z-index:150;pointer-events:all}
+    #joystick-base{width:110px;height:110px;border-radius:50%;background:rgba(126,255,245,.07);border:2px solid rgba(126,255,245,.22);position:relative}
+    #joystick-thumb{width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7efff5,#1a8888);border:2px solid rgba(255,255,255,.25);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 0 14px #7efff540}
+
+    /* ACTION BUTTONS */
+    #action-zone{position:fixed;bottom:18px;right:14px;z-index:150;pointer-events:all;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+    .action-row{display:flex;gap:8px}
+    .action-btn{width:46px;height:46px;border-radius:50%;border:2px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',monospace;font-size:.48rem;color:#fff;cursor:pointer;backdrop-filter:blur(6px);letter-spacing:.5px;transition:transform .1s;-webkit-tap-highlight-color:transparent}
+    .action-btn:active{transform:scale(.88)}
+    #btn-jump{background:rgba(126,255,245,.15);border-color:#7efff5}
+    #btn-enter{background:rgba(255,204,68,.15);border-color:#ffcc44}
+    #btn-attack{background:rgba(255,68,85,.15);border-color:#ff4455}
+    #btn-car{background:rgba(100,200,255,.15);border-color:#64c8ff}
+
+    /* NPC HUD */
+    .npc-hud{position:fixed;z-index:120;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:2px}
+    .npc-name{font-family:'Rajdhani',sans-serif;font-size:.58rem;color:#fff;letter-spacing:1px;text-shadow:0 1px 3px #000}
+    .npc-bar-outer{width:52px;height:5px;background:rgba(0,0,0,.5);border-radius:3px;overflow:hidden;border:1px solid rgba(255,255,255,.18)}
+    .npc-bar-inner{height:100%;background:#ff4455;border-radius:3px;transition:width .3s}
+    .npc-fear-icon{font-size:.72rem;animation:fearPulse .5s ease infinite alternate}
+    @keyframes fearPulse{from{transform:scale(1)}to{transform:scale(1.3)}}
+
+    /* LOADING */
+    #loading-screen{position:fixed;inset:0;z-index:10000;background:#06060f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;transition:opacity .6s ease}
+    #loading-screen.fade-out{opacity:0;pointer-events:none}
+    #loading-screen h1{font-family:'Orbitron',monospace;font-size:clamp(1.3rem,7vw,2.2rem);color:#7efff5;letter-spacing:5px;text-shadow:0 0 40px #7efff5;animation:glowPulse 2s ease infinite;text-align:center}
+    @keyframes glowPulse{0%,100%{text-shadow:0 0 40px #7efff5}50%{text-shadow:0 0 80px #7efff5,0 0 120px #7efff580}}
+    #loading-sub{font-family:'Orbitron',monospace;font-size:.6rem;color:#4488aa;letter-spacing:3px}
+    #loading-bar-outer{width:min(260px,70vw);height:4px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
+    #loading-bar-inner{height:100%;width:0%;background:linear-gradient(90deg,#7efff5,#64c8ff);border-radius:2px;transition:width .35s ease}
+    #loading-tip{font-family:'Rajdhani',sans-serif;font-size:.78rem;color:#556677;letter-spacing:2px}
+
+    /* MINI MAP */
+    #minimap{position:fixed;top:48px;right:12px;z-index:110;width:80px;height:80px;border-radius:50%;overflow:hidden;pointer-events:none;border:1px solid rgba(126,255,245,.22)}
+    #minimap-canvas{width:80px;height:80px}
+  </style>
+</head>
+<body>
+
+  <!-- PORTRAIT OVERLAY: has "Play Anyway" so users are never fully blocked -->
+  <div id="portrait-overlay">
+    <div class="rotate-icon">📱</div>
+    <h2>AstraToonix<br/>Rotate Your Phone</h2>
+    <p>Best in Landscape mode</p>
+    <button id="portrait-play-btn">▶ PLAY ANYWAY</button>
+  </div>
+
+  <!-- ENGINE DISABLED: only shows if Raj Dev credit is tampered -->
+  <div id="engine-disabled-overlay">
+    <h2>⛔ ENGINE DISABLED</h2>
+    <p>Developer credit integrity check failed.</p>
+    <p style="color:#ff4455;font-size:.62rem;letter-spacing:1px;margin-top:6px">Required: Raj Dev | AstraToonix Engine</p>
+  </div>
+
+  <!-- LOADING SCREEN -->
+  <div id="loading-screen">
+    <h1>ASTRATOONIX</h1>
+    <div id="loading-sub">OPEN WORLD ENGINE</div>
+    <div id="loading-bar-outer"><div id="loading-bar-inner"></div></div>
+    <div id="loading-tip">Initializing…</div>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="hud-left">
+      <div class="hud-label">HEALTH</div>
+      <div class="health-bar-wrap"><div id="player-health-bar"></div></div>
+    </div>
+    <div id="hud-center">ASTRATOONIX</div>
+    <div id="hud-right">OPEN WORLD</div>
+  </div>
+
+  <div id="zone-notice"></div>
+  <div id="toast"></div>
+  <div id="transition-overlay"></div>
+
+  <!-- VEHICLE HUD -->
+  <div id="vehicle-hud">
+    <div id="speed-display">0</div>
+    <div id="speed-unit">KM/H</div>
+    <button id="headlight-btn">💡 LIGHTS</button>
+  </div>
+
+  <!-- MINI MAP -->
+  <div id="minimap"><canvas id="minimap-canvas" width="80" height="80"></canvas></div>
+
+  <!-- TOUCH JOYSTICK -->
+  <div id="joystick-zone"><div id="joystick-base"><div id="joystick-thumb"></div></div></div>
+
+  <!-- ACTION BUTTONS -->
+  <div id="action-zone">
+    <div class="action-row">
+      <div class="action-btn" id="btn-jump">JUMP</div>
+      <div class="action-btn" id="btn-enter">ENTER</div>
+    </div>
+    <div class="action-row">
+      <div class="action-btn" id="btn-attack">HIT</div>
+      <div class="action-btn" id="btn-car">CAR</div>
+    </div>
+  </div>
+
+  <!--
+    ================================================================
+    DEVELOPER CREDIT — IDENTITY PROTECTION ANCHOR
+    *** ENGINE READS THIS AT STARTUP — DO NOT REMOVE OR EDIT ***
+    *** Raj Dev — AstraToonix Engine Author                  ***
+    ================================================================
+  -->
+  <div id="dev-credit">Raj Dev</div>
+
+<script>
+'use strict';
+/* ================================================================
+   ASTRATOONIX OPEN WORLD ENGINE  v1.1
+   Author  : Raj Dev
+   Identity Protection: #dev-credit must contain exactly 'Raj Dev'
+================================================================ */
+
+// ── 1. Portrait Overlay (non-blocking — has dismiss button) ──
+let portraitDismissed = false;
+
+document.getElementById('portrait-play-btn').addEventListener('click', () => {
+  portraitDismissed = true;
+  document.getElementById('portrait-overlay').classList.remove('visible');
+});
+document.getElementById('portrait-play-btn').addEventListener('touchend', e => {
+  e.preventDefault();
+  portraitDismissed = true;
+  document.getElementById('portrait-overlay').classList.remove('visible');
+});
+
+function checkOrientation() {
+  if (portraitDismissed) return;
+  const ov = document.getElementById('portrait-overlay');
+  // Only show overlay if truly portrait — give 50px buffer for mobile browser chrome
+  if (window.innerHeight > window.innerWidth + 50) {
+    ov.classList.add('visible');
+  } else {
+    ov.classList.remove('visible');
+  }
+}
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 300));
+// Delay first orientation check — let loading screen show first
+setTimeout(checkOrientation, 1000);
+
+// ── 2. Identity Protection ──────────────────────────────────
+// *** CORE ENGINE GATE: character + vehicle + NPC systems are
+//     disabled if #dev-credit does not contain 'Raj Dev' ***
+function checkDevCredit() {
+  const el = document.getElementById('dev-credit');
+  if (!el || el.textContent.trim() !== 'Raj Dev') {
+    document.getElementById('engine-disabled-overlay').classList.add('visible');
+    return false; // HALT ENGINE
+  }
+  return true;
+}
+
+// ── 3. Loading helpers ──────────────────────────────────────
+function setLoad(pct, tip) {
+  document.getElementById('loading-bar-inner').style.width = pct + '%';
+  if (tip) document.getElementById('loading-tip').textContent = tip;
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── 4. Sound Manager (Web Audio API placeholder) ────────────
+const SoundManager = (() => {
+  let ctx=null, eGain=null, eOsc=null, eRunning=false;
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
+    if (ctx.state==='suspended') ctx.resume().catch(()=>{});
+    return ctx;
+  }
+  function beep(freq, dur, type='sine', vol=0.1) {
+    try {
+      const c=getCtx(), o=c.createOscillator(), g=c.createGain();
+      o.type=type; o.frequency.setValueAtTime(freq, c.currentTime);
+      g.gain.setValueAtTime(vol, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime+dur);
+      o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+dur);
+    } catch(e) {}
+  }
+  return {
+    playFootstep(s) {
+      if (s==='grass')    beep(155+Math.random()*40, 0.08,'triangle', 0.04);
+      if (s==='building') beep(330+Math.random()*60, 0.05,'square',   0.035);
+    },
+    startEngine() {
+      if (eRunning) return;
+      try {
+        const c=getCtx(); eOsc=c.createOscillator(); eGain=c.createGain();
+        eOsc.type='sawtooth'; eOsc.frequency.setValueAtTime(55, c.currentTime);
+        eGain.gain.setValueAtTime(0.06, c.currentTime);
+        eOsc.connect(eGain); eGain.connect(c.destination); eOsc.start(); eRunning=true;
+      } catch(e) {}
+    },
+    stopEngine() {
+      if (!eRunning) return;
+      try {
+        eGain.gain.exponentialRampToValueAtTime(0.0001, getCtx().currentTime+0.4);
+        eOsc.stop(getCtx().currentTime+0.5);
+      } catch(e) {}
+      eRunning=false; eOsc=null; eGain=null;
+    },
+    revEngine(t) {
+      if (!eOsc||!eRunning) return;
+      try { eOsc.frequency.setValueAtTime(55+t*200, getCtx().currentTime); } catch(e) {}
+    },
+    playScream() { beep(860,0.22,'sawtooth',0.09); setTimeout(()=>beep(640,0.18,'sawtooth',0.06),110); },
+    playDoor()   { beep(200,0.12,'triangle',0.07); },
+    playJump()   { beep(270,0.1,'sine',0.06); },
+    playHit()    { beep(95,0.08,'square',0.1); },
+    playHorn()   { beep(440,0.3,'square',0.15); }
+  };
+})();
+
+// ── 5. UI Helpers ───────────────────────────────────────────
+let toastTimer=null;
+function showToast(msg, dur=2600) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'), dur);
+}
+let zoneTimer=null;
+function showZone(name) {
+  const z=document.getElementById('zone-notice');
+  z.textContent=name; z.classList.add('show');
+  clearTimeout(zoneTimer);
+  zoneTimer=setTimeout(()=>z.classList.remove('show'), 3200);
+  document.getElementById('hud-right').textContent=name;
+}
+
+// ── 6. Game State ───────────────────────────────────────────
+const State = {
+  engineEnabled:false, inVehicle:false, insideBuilding:false,
+  playerHealth:100, headlightsOn:false,
+  keys:{ w:false,a:false,s:false,d:false },
+  joystick:{ x:0, y:0 }
+};
+
+// ── 7. Three.js ─────────────────────────────────────────────
+const canvas = document.getElementById('game-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:false, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x87ceeb);
+
+const scene  = new THREE.Scene();
+scene.fog    = new THREE.Fog(0x87ceeb, 55, 180);
+
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth/window.innerHeight, 0.1, 400);
+camera.position.set(0, 5, 10);
+
+function onResize() {
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// ── 8. Cannon.js Physics ────────────────────────────────────
+const world = new CANNON.World();
+world.gravity.set(0,-22,0);
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.solver.iterations=10;
+
+// ── 9. Lighting ─────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const sun = new THREE.DirectionalLight(0xfff8e7, 1.1);
+sun.position.set(60,90,40); sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.near=1; sun.shadow.camera.far=250;
+sun.shadow.camera.left=-70; sun.shadow.camera.right=70;
+sun.shadow.camera.bottom=-70; sun.shadow.camera.top=70;
+scene.add(sun);
+
+// ── 10. Sky ─────────────────────────────────────────────────
+const skyGeo = new THREE.SphereGeometry(380,16,16);
+skyGeo.scale(-1,1,1);
+const skyC=[], skyP=skyGeo.attributes.position;
+for(let i=0;i<skyP.count;i++){
+  const t=(skyP.getY(i)/380+1)/2;
+  skyC.push(0.52-t*0.28, 0.78-t*0.32, 0.92-t*0.25);
+}
+skyGeo.setAttribute('color',new THREE.Float32BufferAttribute(skyC,3));
+scene.add(new THREE.Mesh(skyGeo,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide})));
+
+// ── 11. Materials ───────────────────────────────────────────
+const M = {
+  ground  :new THREE.MeshLambertMaterial({color:0x4a9c3f}),
+  road    :new THREE.MeshLambertMaterial({color:0x3d3d50}),
+  sidewalk:new THREE.MeshLambertMaterial({color:0x9999aa}),
+  door    :new THREE.MeshLambertMaterial({color:0x5c3a1e}),
+  window  :new THREE.MeshLambertMaterial({color:0x88ddff,transparent:true,opacity:0.55}),
+  carRed  :new THREE.MeshLambertMaterial({color:0xee2222}),
+  carDark :new THREE.MeshLambertMaterial({color:0xcc3333}),
+  wheel   :new THREE.MeshLambertMaterial({color:0x1a1a2e}),
+  player  :new THREE.MeshLambertMaterial({color:0x3366cc}),
+  skin    :new THREE.MeshLambertMaterial({color:0xffd27f}),
+  interior:new THREE.MeshLambertMaterial({color:0xd4b896}),
+  trunk   :new THREE.MeshLambertMaterial({color:0x5c3a1e}),
+  leaves  :new THREE.MeshLambertMaterial({color:0x2d6a27}),
+  lamp    :new THREE.MeshBasicMaterial({color:0xffffcc}),
+  npc     :new THREE.MeshLambertMaterial({color:0xffd27f})
+};
+
+// ── 12. Ground & Roads ──────────────────────────────────────
+function buildGround() {
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(300,300),M.ground);
+  m.rotation.x=-Math.PI/2; m.receiveShadow=true; scene.add(m);
+  const b=new CANNON.Body({mass:0});
+  b.addShape(new CANNON.Plane());
+  b.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0),-Math.PI/2);
+  world.addBody(b);
+}
+function buildRoads() {
+  [[300,9],[9,300]].forEach(([w,d],i)=>{
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(w,d),M.road);
+    m.rotation.x=-Math.PI/2; m.position.y=0.015; scene.add(m);
+  });
+  [[-7,0,300,2],[7,0,300,2],[0,-7,2,300],[0,7,2,300]].forEach(([x,z,w,d])=>{
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(w,d),M.sidewalk);
+    m.rotation.x=-Math.PI/2; m.position.set(x,0.02,z); scene.add(m);
+  });
+}
+
+// ── 13. Buildings ───────────────────────────────────────────
+const buildings=[];
+function buildHouse(x,z,label,color=0xc8aa80) {
+  const mat=new THREE.MeshLambertMaterial({color});
+  const g=new THREE.Group();
+  // Walls
+  const walls=new THREE.Mesh(new THREE.BoxGeometry(8,5,8),mat);
+  walls.position.y=2.5; walls.castShadow=true; walls.receiveShadow=true; g.add(walls);
+  // Roof
+  const roof=new THREE.Mesh(new THREE.ConeGeometry(6.5,3,4),new THREE.MeshLambertMaterial({color:0x8b3a3a}));
+  roof.position.y=6.5; roof.rotation.y=Math.PI/4; g.add(roof);
+  // Windows
+  [[-2,3,4.01],[2,3,4.01]].forEach(([wx,wy,wz])=>{
+    const w=new THREE.Mesh(new THREE.PlaneGeometry(1.4,1.3),M.window);
+    w.position.set(wx,wy,wz); g.add(w);
+  });
+  // Door frame
+  const df=new THREE.Mesh(new THREE.BoxGeometry(2.2,3.2,.12),M.door);
+  df.position.set(0,1.6,4.02); g.add(df);
+  // Door pivot
+  const pivot=new THREE.Group();
+  pivot.position.set(-0.95,0,4.02);
+  const dm=new THREE.Mesh(new THREE.BoxGeometry(1.8,2.9,.08),M.door);
+  dm.position.set(0.9,1.45,0); pivot.add(dm); g.add(pivot);
+  // Step
+  const step=new THREE.Mesh(new THREE.BoxGeometry(2.5,.15,.6),M.sidewalk);
+  step.position.set(0,.08,4.35); g.add(step);
+  g.position.set(x,0,z); scene.add(g);
+  // Physics
+  const b=new CANNON.Body({mass:0});
+  b.addShape(new CANNON.Box(new CANNON.Vec3(4,2.5,4)));
+  b.position.set(x,2.5,z); world.addBody(b);
+  // Interior
+  const interior=buildInterior(x,z);
+  buildings.push({group:g,doorPivot:pivot,doorAngle:0,doorOpening:false,
+    interior,worldPos:new THREE.Vector3(x,0,z),
+    exitPoint:new THREE.Vector3(x,.5,z+6.5),label});
+}
+
+function buildInterior(x,z) {
+  const g=new THREE.Group();
+  // Floor
+  const fl=new THREE.Mesh(new THREE.PlaneGeometry(7.4,7.4),M.interior);
+  fl.rotation.x=-Math.PI/2; fl.position.y=.01; g.add(fl);
+  // Ceiling
+  const ce=new THREE.Mesh(new THREE.PlaneGeometry(7.4,7.4),new THREE.MeshLambertMaterial({color:0xeeeedc}));
+  ce.rotation.x=Math.PI/2; ce.position.y=4.8; g.add(ce);
+  // Walls (simple)
+  [[0,2.5,-3.7,7.4,5,true],[0,2.5,3.7,7.4,5,true],
+   [-3.7,2.5,0,7.4,5,false],[3.7,2.5,0,7.4,5,false]].forEach(([wx,wy,wz,sz,h,horiz])=>{
+    const wg=horiz?new THREE.BoxGeometry(sz,.1+h,0.1):new THREE.BoxGeometry(0.1,h,sz);
+    wg; // just a shape ref
+    const wgeo=new THREE.BoxGeometry(horiz?sz:0.1,h,horiz?0.1:sz);
+    const wm=new THREE.Mesh(wgeo,new THREE.MeshLambertMaterial({color:0xddd0bb}));
+    wm.position.set(wx,wy,wz); g.add(wm);
+  });
+  // Table
+  const table=new THREE.Mesh(new THREE.BoxGeometry(2.2,.1,1.1),new THREE.MeshLambertMaterial({color:0x8b6340}));
+  table.position.set(0,.85,0); g.add(table);
+  [[-0.9,-0.4],[0.9,-0.4],[-0.9,0.4],[0.9,0.4]].forEach(([lx,lz])=>{
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(.08,.8,.08),M.trunk);
+    leg.position.set(lx,.4,lz); g.add(leg);
+  });
+  // Sofa
+  const sofa=new THREE.Mesh(new THREE.BoxGeometry(3,.55,1),new THREE.MeshLambertMaterial({color:0x446688}));
+  sofa.position.set(0,.3,-2.5); g.add(sofa);
+  const sofaB=new THREE.Mesh(new THREE.BoxGeometry(3,.8,.2),new THREE.MeshLambertMaterial({color:0x3a5577}));
+  sofaB.position.set(0,.7,-2.95); g.add(sofaB);
+  // Room light
+  const rl=new THREE.PointLight(0xffeebb,1.8,14);
+  rl.position.set(0,4,0); g.add(rl);
+  g.position.set(x,0,z); g.visible=false; scene.add(g);
+  return g;
+}
+
+// ── 14. Trees ───────────────────────────────────────────────
+function buildTree(x,z) {
+  const g=new THREE.Group();
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18,.28,2.2,7),M.trunk);
+  trunk.position.y=1.1; g.add(trunk);
+  [[3.2,1.6],[4.2,1.2],[5.0,.8]].forEach(([py,r])=>{
+    const f=new THREE.Mesh(new THREE.ConeGeometry(r*1.8,1.6,7),M.leaves);
+    f.position.y=py; g.add(f);
+  });
+  g.position.set(x,0,z); scene.add(g);
+  const b=new CANNON.Body({mass:0});
+  b.addShape(new CANNON.Cylinder(.22,.32,2.2,6));
+  b.position.set(x,1.1,z); world.addBody(b);
+}
+
+// ── 15. Street Lamps ────────────────────────────────────────
+function buildStreetLamp(x,z) {
+  const g=new THREE.Group();
+  const pole=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,5.5,6),new THREE.MeshLambertMaterial({color:0x778899}));
+  pole.position.y=2.75; g.add(pole);
+  const lens=new THREE.Mesh(new THREE.SphereGeometry(.13,6,6),M.lamp);
+  lens.position.set(0,5.4,0.1); g.add(lens);
+  const light=new THREE.PointLight(0xffeecc,2,24);
+  light.position.set(0,5.2,0); g.add(light);
+  g.position.set(x,0,z); scene.add(g);
+}
+
+// ── 16. Car ─────────────────────────────────────────────────
+let carGroup, carBody, carWheels=[], carHeadlights=[], carWheelRot=0;
+function buildCar(x,z) {
+  carGroup=new THREE.Group();
+  const chassis=new THREE.Mesh(new THREE.BoxGeometry(2.1,.55,4.2),M.carRed);
+  chassis.position.y=.05; chassis.castShadow=true; carGroup.add(chassis);
+  const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.75,.62,2.1),M.carDark);
+  cabin.position.set(0,.6,-.2); carGroup.add(cabin);
+  // Wheels
+  const wGeo=new THREE.CylinderGeometry(.38,.38,.28,12);
+  wGeo.rotateZ(Math.PI/2);
+  [[-1.18,-.25,-1.4],[1.18,-.25,-1.4],[-1.18,-.25,1.4],[1.18,-.25,1.4]].forEach(p=>{
+    const w=new THREE.Mesh(wGeo,M.wheel);
+    w.position.set(...p); carGroup.add(w); carWheels.push(w);
+  });
+  // Headlights (SpotLights)
+  [-.65,.65].forEach(side=>{
+    const spot=new THREE.SpotLight(0xffffcc,0,35,Math.PI/9,.35);
+    spot.position.set(side,.2,-2.2);
+    spot.target.position.set(side,-1,-15);
+    carGroup.add(spot); carGroup.add(spot.target);
+    carHeadlights.push(spot);
+    const lens=new THREE.Mesh(new THREE.CircleGeometry(.11,8),M.lamp);
+    lens.position.set(side,.2,-2.12); carGroup.add(lens);
+  });
+  // Tail lights
+  [-.65,.65].forEach(side=>{
+    const tl=new THREE.Mesh(new THREE.CircleGeometry(.1,8),new THREE.MeshBasicMaterial({color:0xff2200}));
+    tl.position.set(side,.2,2.12); tl.rotation.y=Math.PI; carGroup.add(tl);
+  });
+  carGroup.position.set(x,.6,z); scene.add(carGroup);
+  carBody=new CANNON.Body({mass:900,linearDamping:.45,angularDamping:.75});
+  carBody.addShape(new CANNON.Box(new CANNON.Vec3(1.05,.35,2.1)));
+  carBody.position.set(x,1.1,z); world.addBody(carBody);
+}
+
+// ── 17. Player ──────────────────────────────────────────────
+let playerMesh, playerBody, playerYaw=0;
+const camOff=new THREE.Vector3(0,3.5,7), camTgt=new THREE.Vector3();
+
+function buildPlayer() {
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,1,8),M.player); g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.35,8,8),M.skin);
+  head.position.y=.68; g.add(head);
+  [-.14,.14].forEach(ex=>{
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(.06,6,6),new THREE.MeshBasicMaterial({color:0x222233}));
+    eye.position.set(ex,.72,.3); g.add(eye);
+  });
+  playerMesh=g; scene.add(g);
+  playerBody=new CANNON.Body({mass:75,linearDamping:.92,angularDamping:1});
+  playerBody.addShape(new CANNON.Sphere(.45));
+  playerBody.position.set(0,2,12); playerBody.fixedRotation=true;
+  world.addBody(playerBody);
+}
+
+function updateCamera() {
+  const px=playerBody.position.x,py=playerBody.position.y,pz=playerBody.position.z;
+  camTgt.set(px+Math.sin(playerYaw)*camOff.z, py+camOff.y, pz+Math.cos(playerYaw)*camOff.z);
+  camera.position.lerp(camTgt,.1);
+  camera.lookAt(px,py+.7,pz);
+}
+
+// ── 18. NPCs ────────────────────────────────────────────────
+const npcs=[];
+const NPC_COLS=[0x4455dd,0xdd4455,0x44dd99,0xdd9944,0x9944dd,0xdd44aa];
+
+function buildNPC(x,z,name) {
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.28,.28,1,8),M.npc); g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.3,8,8),M.npc);
+  head.position.y=.65; g.add(head);
+  const cloth=new THREE.Mesh(new THREE.CylinderGeometry(.29,.29,.65,8),new THREE.MeshLambertMaterial({color:NPC_COLS[npcs.length%NPC_COLS.length]}));
+  cloth.position.y=-.15; g.add(cloth);
+  g.position.set(x,.65,z); scene.add(g);
+  const hudEl=document.createElement('div');
+  hudEl.className='npc-hud';
+  hudEl.innerHTML=`<div class="npc-name">${name}</div><div class="npc-bar-outer"><div class="npc-bar-inner"></div></div>`;
+  document.body.appendChild(hudEl);
+  npcs.push({
+    group:g, hudEl, barEl:hudEl.querySelector('.npc-bar-inner'),
+    name, health:100, fear:false, fearTimer:0, dead:false,
+    idleTimer:Math.random()*3,
+    walkDir:new THREE.Vector3(Math.random()*2-1,0,Math.random()*2-1).normalize(),
+    fleeDir:new THREE.Vector3(Math.random()*2-1,0,Math.random()*2-1).normalize()
+  });
+}
+
+function damageNearestNPC() {
+  const pp=new THREE.Vector3(playerBody.position.x,playerBody.position.y,playerBody.position.z);
+  let nearest=null, minD=4.5;
+  npcs.forEach(n=>{
+    if(n.dead) return;
+    const d=n.group.position.distanceTo(pp);
+    if(d<minD){minD=d;nearest=n;}
+  });
+  if(!nearest){showToast('No one nearby!');return;}
+  nearest.health-=25;
+  nearest.fear=true; nearest.fearTimer=6;
+  nearest.fleeDir.set(nearest.group.position.x-pp.x,0,nearest.group.position.z-pp.z).normalize();
+  SoundManager.playScream(); SoundManager.playHit();
+  nearest.barEl.style.width=Math.max(0,nearest.health)+'%';
+  if(nearest.health<=0){
+    nearest.dead=true; nearest.group.visible=false; nearest.hudEl.style.display='none';
+    showToast(nearest.name+' is down!');
+  } else {
+    if(!nearest.hudEl.querySelector('.npc-fear-icon')){
+      const fi=document.createElement('div'); fi.className='npc-fear-icon'; fi.textContent='😱';
+      nearest.hudEl.prepend(fi);
+    }
+    showToast(nearest.name+': '+nearest.health+'HP — FLEEING!');
+  }
+}
+
+const projV=new THREE.Vector3();
+function updateNPCHUDs() {
+  npcs.forEach(n=>{
+    if(n.dead) return;
+    projV.set(n.group.position.x,n.group.position.y+1.6,n.group.position.z);
+    projV.project(camera);
+    const sx=(projV.x+1)*window.innerWidth*.5;
+    const sy=(-projV.y+1)*window.innerHeight*.5;
+    if(projV.z<1&&sx>0&&sx<window.innerWidth&&sy>0&&sy<window.innerHeight){
+      n.hudEl.style.cssText=`display:flex;left:${sx}px;top:${sy}px;transform:translate(-50%,-100%)`;
+    } else { n.hudEl.style.display='none'; }
+  });
+}
+
+function updateNPCs(dt) {
+  npcs.forEach(n=>{
+    if(n.dead) return;
+    if(n.fear){
+      n.fearTimer-=dt;
+      if(n.fearTimer<=0){n.fear=false;const fi=n.hudEl.querySelector('.npc-fear-icon');if(fi)fi.remove();}
+      n.group.position.x+=n.fleeDir.x*5*dt;
+      n.group.position.z+=n.fleeDir.z*5*dt;
+    } else {
+      n.idleTimer-=dt;
+      if(n.idleTimer<=0){
+        n.walkDir.set(Math.random()*2-1,0,Math.random()*2-1).normalize();
+        n.idleTimer=2+Math.random()*3;
+      }
+      n.group.position.x+=n.walkDir.x*1.3*dt;
+      n.group.position.z+=n.walkDir.z*1.3*dt;
+      n.group.rotation.y=Math.atan2(n.walkDir.x,n.walkDir.z);
+    }
+    n.group.position.x=Math.max(-90,Math.min(90,n.group.position.x));
+    n.group.position.z=Math.max(-90,Math.min(90,n.group.position.z));
+  });
+}
+
+// ── 19. World Assembly ──────────────────────────────────────
+function buildWorld() {
+  buildGround(); buildRoads();
+  buildHouse(-22,-22,'Lakeside Cabin',0xc8b090);
+  buildHouse( 22,-22,'Corner Mart',  0xaac890);
+  buildHouse(-22, 22,'Old Farmhouse',0xd4a060);
+  buildHouse( 22, 22,'Blue House',   0x90a8cc);
+  [[-12,18],[12,18],[-18,6],[18,6],[-32,12],[32,12],
+   [-35,-6],[35,-6],[-14,-38],[14,-38],[0,-42],[-42,32],[42,32]].forEach(([x,z])=>buildTree(x,z));
+  [[-6,0],[6,0],[0,-6],[0,6],[-6,-28],[6,-28],[-6,28],[6,28]].forEach(([x,z])=>buildStreetLamp(x,z));
+  buildCar(8,8); buildPlayer();
+  [[16,-12,'Alex'],[-14,9,'Maya'],[9,20,'Sam'],[-26,14,'Jordan'],[27,6,'Riley']].forEach(([x,z,n])=>buildNPC(x,z,n));
+}
+
+// ── 20. Player Movement ─────────────────────────────────────
+let footTimer=0;
+function updatePlayer(dt) {
+  if(!State.engineEnabled||State.inVehicle) return;
+  let ix=State.joystick.x, iy=-State.joystick.y;
+  if(State.keys.w) iy=-1; if(State.keys.s) iy=1;
+  if(State.keys.a) ix=-1; if(State.keys.d) ix=1;
+  playerYaw+=ix*1.9*dt;
+  playerBody.applyForce(
+    new CANNON.Vec3(Math.sin(playerYaw)*iy*300*dt, 0, Math.cos(playerYaw)*iy*300*dt),
+    playerBody.position
+  );
+  playerBody.angularVelocity.set(0,0,0);
+  playerMesh.position.set(playerBody.position.x,playerBody.position.y-.5,playerBody.position.z);
+  playerMesh.rotation.y=-playerYaw;
+  if(Math.abs(ix)>.05||Math.abs(iy)>.05){
+    footTimer-=dt;
+    if(footTimer<=0){ SoundManager.playFootstep(State.insideBuilding?'building':'grass'); footTimer=.38; }
+  }
+  checkNearBuilding();
+}
+
+// ── 21. Vehicle ─────────────────────────────────────────────
+function updateVehicle(dt) {
+  if(!State.engineEnabled||!State.inVehicle) return;
+  let ix=State.joystick.x, iy=-State.joystick.y;
+  if(State.keys.w) iy=-1; if(State.keys.s) iy=1;
+  if(State.keys.a) ix=-1; if(State.keys.d) ix=1;
+  const ang=Math.atan2(carBody.quaternion.x,carBody.quaternion.w)*2;
+  carBody.applyForce(
+    new CANNON.Vec3(-Math.sin(ang)*iy*6000*dt,0,-Math.cos(ang)*iy*6000*dt),
+    carBody.position
+  );
+  carBody.angularVelocity.y+=ix*.06*(iy>=0?1:-1);
+  carBody.angularVelocity.y*=.88;
+  carBody.angularVelocity.x*=.4; carBody.angularVelocity.z*=.4;
+  carBody.linearVelocity.y*=.96;
+  carGroup.position.copy(carBody.position); carGroup.position.y-=.5;
+  carGroup.quaternion.copy(carBody.quaternion);
+  const spd=carBody.velocity.length();
+  carWheelRot+=spd*dt*3.5;
+  carWheels.forEach(w=>{ w.rotation.x=carWheelRot; });
+  document.getElementById('speed-display').textContent=Math.round(spd*3.6);
+  SoundManager.revEngine(Math.min(spd/18,1));
+  carGroup.position.y+=Math.sin(Date.now()*.009)*.007*spd;
+  playerBody.position.set(carBody.position.x,carBody.position.y+1.2,carBody.position.z);
+}
+
+// ── 22. Doors ───────────────────────────────────────────────
+function updateDoors(dt) {
+  buildings.forEach(b=>{
+    if(b.doorOpening&&b.doorAngle<Math.PI/2){
+      b.doorAngle=Math.min(b.doorAngle+dt*2.8,Math.PI/2);
+      b.doorPivot.rotation.y=b.doorAngle;
+    }
+  });
+}
+
+// ── 23. Building Entry / Exit ───────────────────────────────
+let nearBuilding=null, transitioning=false;
+function checkNearBuilding() {
+  const pp=new THREE.Vector3(playerBody.position.x,playerBody.position.y,playerBody.position.z);
+  nearBuilding=null;
+  buildings.forEach(b=>{ if(pp.distanceTo(b.worldPos)<7) nearBuilding=b; });
+}
+function enterBuilding(b) {
+  transitioning=true; SoundManager.playDoor(); b.doorOpening=true;
+  const ov=document.getElementById('transition-overlay');
+  ov.classList.add('fade');
+  setTimeout(()=>{
+    playerBody.position.set(b.worldPos.x,1,b.worldPos.z-1.5);
+    playerBody.velocity.set(0,0,0);
+    State.insideBuilding=true; b.interior.visible=true; b.group.visible=false;
+    showZone('Inside: '+b.label); showToast('Press ENTER to exit');
+    ov.classList.remove('fade'); transitioning=false;
+  },430);
+}
+function exitBuilding() {
+  transitioning=true; SoundManager.playDoor();
+  const ov=document.getElementById('transition-overlay');
+  ov.classList.add('fade');
+  setTimeout(()=>{
+    const b=buildings.find(bld=>bld.interior.visible);
+    if(b){
+      playerBody.position.set(b.exitPoint.x,1,b.exitPoint.z);
+      playerBody.velocity.set(0,0,0);
+      b.interior.visible=false; b.group.visible=true;
+      b.doorOpening=false; b.doorAngle=0; b.doorPivot.rotation.y=0;
+    }
+    State.insideBuilding=false; showZone('Open World');
+    ov.classList.remove('fade'); transitioning=false;
+  },430);
+}
+
+// ── 24. Car Enter / Exit ────────────────────────────────────
+function enterVehicle() {
+  State.inVehicle=true; playerMesh.visible=false;
+  document.getElementById('vehicle-hud').classList.add('visible');
+  SoundManager.startEngine(); showZone('In Vehicle');
+  showToast('Engine ON! Joystick=drive • CAR btn=exit');
+}
+function exitVehicle() {
+  State.inVehicle=false; playerMesh.visible=true;
+  document.getElementById('vehicle-hud').classList.remove('visible');
+  document.getElementById('speed-display').textContent='0';
+  SoundManager.stopEngine();
+  playerBody.position.set(carBody.position.x+2.8,carBody.position.y,carBody.position.z);
+  playerBody.velocity.set(0,0,0);
+  showZone('Open World'); showToast('Exited vehicle.');
+}
+
+// ── 25. Action Handlers ─────────────────────────────────────
+function onJump() {
+  if(!State.engineEnabled||State.inVehicle) return;
+  if(playerBody.position.y<2.8){ playerBody.velocity.y=9.5; SoundManager.playJump(); }
+}
+function onEnterExit() {
+  if(!State.engineEnabled||transitioning) return;
+  if(State.inVehicle){ exitVehicle(); return; }
+  if(State.insideBuilding){ exitBuilding(); return; }
+  if(nearBuilding){ enterBuilding(nearBuilding); return; }
+  const pp=new THREE.Vector3(playerBody.position.x,playerBody.position.y,playerBody.position.z);
+  const cp=new THREE.Vector3(carBody.position.x,carBody.position.y,carBody.position.z);
+  if(pp.distanceTo(cp)<4.5) enterVehicle();
+  else showToast('Nothing nearby to enter.');
+}
+function onAttack() {
+  if(!State.engineEnabled||State.inVehicle) return;
+  SoundManager.playHit(); damageNearestNPC();
+}
+function toggleHeadlights() {
+  State.headlightsOn=!State.headlightsOn;
+  carHeadlights.forEach(l=>l.intensity=State.headlightsOn?3.5:0);
+  showToast(State.headlightsOn?'💡 Headlights ON':'💡 Headlights OFF');
+}
+window.onJump=onJump; window.onEnterExit=onEnterExit;
+window.onAttack=onAttack; window.toggleHeadlights=toggleHeadlights;
+
+// ── 26. Keyboard ─────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(e.key==='w'||e.key==='ArrowUp')    State.keys.w=true;
+  if(e.key==='s'||e.key==='ArrowDown')  State.keys.s=true;
+  if(e.key==='a'||e.key==='ArrowLeft')  State.keys.a=true;
+  if(e.key==='d'||e.key==='ArrowRight') State.keys.d=true;
+  if(e.key===' '){e.preventDefault();onJump();}
+  if(e.key==='e'||e.key==='E') onEnterExit();
+  if(e.key==='f'||e.key==='F') onAttack();
+  if(e.key==='h'||e.key==='H') toggleHeadlights();
+});
+document.addEventListener('keyup',e=>{
+  if(e.key==='w'||e.key==='ArrowUp')    State.keys.w=false;
+  if(e.key==='s'||e.key==='ArrowDown')  State.keys.s=false;
+  if(e.key==='a'||e.key==='ArrowLeft')  State.keys.a=false;
+  if(e.key==='d'||e.key==='ArrowRight') State.keys.d=false;
+});
+
+// ── 27. Touch Joystick ───────────────────────────────────────
+const jBase=document.getElementById('joystick-base');
+const jThumb=document.getElementById('joystick-thumb');
+let jTouchId=null;
+const JR=34;
+jBase.addEventListener('touchstart',e=>{ e.preventDefault(); jTouchId=e.changedTouches[0].identifier; },{passive:false});
+document.addEventListener('touchmove',e=>{
+  if(jTouchId===null) return;
+  const t=[...e.changedTouches].find(t=>t.identifier===jTouchId);
+  if(!t) return;
+  e.preventDefault();
+  const r=jBase.getBoundingClientRect();
+  let dx=t.clientX-(r.left+r.width/2), dy=t.clientY-(r.top+r.height/2);
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist>JR){dx=dx/dist*JR;dy=dy/dist*JR;}
+  jThumb.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
+  State.joystick.x=dx/JR; State.joystick.y=dy/JR;
+},{passive:false});
+function resetJoy(){
+  jThumb.style.transform='translate(-50%,-50%)';
+  State.joystick.x=State.joystick.y=0; jTouchId=null;
+}
+document.addEventListener('touchend',e=>{
+  if([...e.changedTouches].find(t=>t.identifier===jTouchId)) resetJoy();
+});
+
+// Attach button events properly (touchstart + click for desktop)
+function addBtn(id,fn){
+  const el=document.getElementById(id);
+  el.addEventListener('touchstart',e=>{e.preventDefault();fn();},{passive:false});
+  el.addEventListener('click',fn);
+}
+addBtn('btn-jump',   onJump);
+addBtn('btn-enter',  onEnterExit);
+addBtn('btn-attack', onAttack);
+addBtn('btn-car',    onEnterExit);
+addBtn('headlight-btn', toggleHeadlights);
+
+// ── 28. Mini-map ─────────────────────────────────────────────
+const mmCtx=document.getElementById('minimap-canvas').getContext('2d');
+const MMS=80/200;
+function drawMinimap() {
+  mmCtx.clearRect(0,0,80,80);
+  mmCtx.fillStyle='rgba(15,20,35,.75)';
+  mmCtx.beginPath();mmCtx.arc(40,40,40,0,Math.PI*2);mmCtx.fill();
+  mmCtx.strokeStyle='#444455';mmCtx.lineWidth=2.5;
+  mmCtx.beginPath();mmCtx.moveTo(40,0);mmCtx.lineTo(40,80);mmCtx.stroke();
+  mmCtx.beginPath();mmCtx.moveTo(0,40);mmCtx.lineTo(80,40);mmCtx.stroke();
+  mmCtx.fillStyle='#88aaff';
+  buildings.forEach(b=>{
+    const mx=40+b.worldPos.x*MMS, mz=40+b.worldPos.z*MMS;
+    mmCtx.fillRect(mx-2.5,mz-2.5,5,5);
+  });
+  mmCtx.fillStyle='#ffcc44';
+  npcs.forEach(n=>{
+    if(n.dead) return;
+    mmCtx.beginPath();mmCtx.arc(40+n.group.position.x*MMS,40+n.group.position.z*MMS,1.5,0,Math.PI*2);mmCtx.fill();
+  });
+  if(carBody){
+    mmCtx.fillStyle='#ff4444';
+    mmCtx.beginPath();mmCtx.arc(40+carBody.position.x*MMS,40+carBody.position.z*MMS,2.5,0,Math.PI*2);mmCtx.fill();
+  }
+  if(playerBody){
+    const px=40+playerBody.position.x*MMS, pz=40+playerBody.position.z*MMS;
+    mmCtx.fillStyle='#ffffff';
+    mmCtx.beginPath();mmCtx.arc(px,pz,3,0,Math.PI*2);mmCtx.fill();
+    mmCtx.strokeStyle='#7efff5';mmCtx.lineWidth=1.5;
+    mmCtx.beginPath();mmCtx.moveTo(px,pz);
+    mmCtx.lineTo(px-Math.sin(playerYaw)*7,pz-Math.cos(playerYaw)*7);
+    mmCtx.stroke();
+  }
+  mmCtx.globalCompositeOperation='destination-in';
+  mmCtx.beginPath();mmCtx.arc(40,40,40,0,Math.PI*2);mmCtx.fill();
+  mmCtx.globalCompositeOperation='source-over';
+}
+
+// ── 29. Main Loop ────────────────────────────────────────────
+const FIXED=1/60; let lastT=null;
+function gameLoop(t) {
+  requestAnimationFrame(gameLoop);
+  const dt=lastT===null?FIXED:Math.min((t-lastT)/1000,.05);
+  lastT=t;
+  if(!State.engineEnabled){renderer.render(scene,camera);return;}
+  world.step(FIXED,dt,3);
+  updatePlayer(dt); updateVehicle(dt); updateDoors(dt);
+  updateNPCs(dt); updateNPCHUDs(); updateCamera();
+  document.getElementById('player-health-bar').style.width=State.playerHealth+'%';
+  drawMinimap();
+  renderer.render(scene,camera);
+}
+
+// ── 30. INIT ─────────────────────────────────────────────────
+async function init() {
+  setLoad(10,'Verifying developer credit…');
+  await sleep(120);
+
+  // *** IDENTITY PROTECTION: Raj Dev credit check ***
+  // Engine halts completely if #dev-credit != 'Raj Dev'
+  if(!checkDevCredit()){
+    setLoad(100,'Engine disabled — credit check failed.');
+    setTimeout(()=>{ document.getElementById('loading-screen').style.display='none'; },1200);
+    return;
+  }
+
+  setLoad(25,'Building terrain…');
+  await sleep(180);
+  buildWorld();
+
+  setLoad(58,'Initializing physics…');
+  await sleep(200);
+
+  setLoad(78,'Spawning NPCs…');
+  await sleep(150);
+
+  setLoad(94,'Starting renderer…');
+  await sleep(150);
+
+  // *** ENGINE ARMED — Raj Dev verified ***
+  State.engineEnabled=true;
+
+  setLoad(100,'Welcome to AstraToonix!');
+  await sleep(350);
+
+  const ls=document.getElementById('loading-screen');
+  ls.classList.add('fade-out');
+  setTimeout(()=>{ ls.style.display='none'; },700);
+
+  showZone('Open World');
+  setTimeout(()=>showToast('Joystick=move • ENTER=building • CAR=drive • HIT=attack'),900);
+
+  requestAnimationFrame(gameLoop);
+}
+
+init();
+</script>
+</body>
+</html>
