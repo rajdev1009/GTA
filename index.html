@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AstraToonix Open World</title>
+
+  <!-- ===== CDN LIBRARIES ===== -->
+  <!-- Three.js r158 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Cannon.js physics -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       GLOBAL RESET & BASE
+    ============================================================ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #0a0a12;
+      font-family: 'Rajdhani', sans-serif;
+      touch-action: none;
+      user-select: none;
+    }
+
+    /* ============================================================
+       PORTRAIT LOCK OVERLAY
+       Shows whenever device is in portrait — blocks all gameplay
+    ============================================================ */
+    #portrait-overlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 9999;
+      background: linear-gradient(135deg, #0d0d1f 0%, #1a0a2e 100%);
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 24px;
+    }
+    #portrait-overlay.visible { display: flex; }
+    .rotate-icon {
+      font-size: 72px;
+      animation: rotateAnim 1.8s ease-in-out infinite;
+    }
+    @keyframes rotateAnim {
+      0%   { transform: rotate(0deg); }
+      40%  { transform: rotate(90deg); }
+      60%  { transform: rotate(90deg); }
+      100% { transform: rotate(0deg); }
+    }
+    #portrait-overlay h2 {
+      font-family: 'Orbitron', monospace;
+      color: #7efff5;
+      font-size: 1.4rem;
+      text-align: center;
+      letter-spacing: 2px;
+      text-shadow: 0 0 20px #7efff580;
+    }
+    #portrait-overlay p {
+      color: #8899bb;
+      font-size: 1rem;
+      letter-spacing: 1px;
+    }
+
+    /* ============================================================
+       THREE.JS CANVAS
+    ============================================================ */
+    #game-canvas {
+      position: fixed; inset: 0;
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* ============================================================
+       HUD — TOP BAR
+    ============================================================ */
+    #hud {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 16px;
+      background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+      pointer-events: none;
+    }
+    #hud-left { display: flex; flex-direction: column; gap: 4px; }
+    .hud-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.6rem;
+      color: #7efff5;
+      letter-spacing: 2px;
+      opacity: 0.7;
+    }
+    .health-bar-wrap {
+      width: 120px; height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px; overflow: hidden;
+    }
+    #player-health-bar {
+      height: 100%; width: 100%;
+      background: linear-gradient(90deg, #00ff88, #7efff5);
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    #hud-center {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.65rem;
+      color: #fff;
+      letter-spacing: 3px;
+      text-shadow: 0 0 12px #7efff5;
+      text-align: center;
+    }
+    #hud-right {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.6rem;
+      color: #ffcc44;
+      letter-spacing: 1px;
+    }
+
+    /* ============================================================
+       DEVELOPER CREDIT — IDENTITY PROTECTION ANCHOR
+       *** RAJ DEV CREDIT — ENGINE LOCK IS TIED TO THIS ELEMENT ***
+    ============================================================ */
+    #dev-credit {
+      position: fixed; bottom: 6px; left: 50%; transform: translateX(-50%);
+      z-index: 200;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.5rem;
+      color: rgba(126,255,245,0.4);
+      letter-spacing: 2px;
+      pointer-events: none;
+      /* DO NOT REMOVE OR ALTER — ENGINE DISABLED IF TEXT != 'Raj Dev' */
+    }
+
+    /* ============================================================
+       LOCATION NOTICE (zone name popup)
+    ============================================================ */
+    #zone-notice {
+      position: fixed; top: 50px; left: 50%; transform: translateX(-50%);
+      z-index: 110;
+      font-family: 'Orbitron', monospace;
+      font-size: 1rem;
+      color: #fff;
+      letter-spacing: 3px;
+      text-shadow: 0 0 20px #7efff5;
+      opacity: 0;
+      transition: opacity 0.5s;
+      pointer-events: none;
+    }
+    #zone-notice.show { opacity: 1; }
+
+    /* ============================================================
+       DISABLED ENGINE OVERLAY (fires if Raj Dev check fails)
+    ============================================================ */
+    #engine-disabled-overlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 9998;
+      background: rgba(0,0,0,0.92);
+      flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+    }
+    #engine-disabled-overlay.visible { display: flex; }
+    #engine-disabled-overlay h2 {
+      font-family: 'Orbitron', monospace;
+      color: #ff4455;
+      font-size: 1.2rem;
+      letter-spacing: 3px;
+      text-shadow: 0 0 20px #ff4455;
+    }
+    #engine-disabled-overlay p {
+      color: #8899bb;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+    }
+
+    /* ============================================================
+       INTERIOR TRANSITION OVERLAY
+    ============================================================ */
+    #transition-overlay {
+      position: fixed; inset: 0; z-index: 500;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+    #transition-overlay.fade { opacity: 1; pointer-events: all; }
+
+    /* ============================================================
+       NOTIFICATION TOAST
+    ============================================================ */
+    #toast {
+      position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+      z-index: 300;
+      background: rgba(0,0,0,0.8);
+      border: 1px solid #7efff540;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.9rem;
+      color: #7efff5;
+      letter-spacing: 1px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      backdrop-filter: blur(8px);
+    }
+    #toast.show { opacity: 1; }
+
+    /* ============================================================
+       VEHICLE INFO
+    ============================================================ */
+    #vehicle-hud {
+      position: fixed; bottom: 120px; right: 16px;
+      z-index: 110;
+      display: none;
+      flex-direction: column; align-items: flex-end; gap: 4px;
+    }
+    #vehicle-hud.visible { display: flex; }
+    #speed-display {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.6rem;
+      color: #ffcc44;
+      text-shadow: 0 0 12px #ffcc4480;
+    }
+    #speed-unit {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.7rem;
+      color: #8899bb;
+      letter-spacing: 2px;
+    }
+    #headlight-btn {
+      margin-top: 4px;
+      background: rgba(0,0,0,0.6);
+      border: 1px solid #ffcc44;
+      color: #ffcc44;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 1px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      pointer-events: all;
+    }
+
+    /* ============================================================
+       TOUCH JOYSTICK (LEFT)
+    ============================================================ */
+    #joystick-zone {
+      position: fixed; bottom: 20px; left: 20px;
+      width: 120px; height: 120px;
+      z-index: 150; pointer-events: all;
+    }
+    #joystick-base {
+      width: 120px; height: 120px;
+      border-radius: 50%;
+      background: rgba(126,255,245,0.08);
+      border: 2px solid rgba(126,255,245,0.25);
+      position: relative;
+      backdrop-filter: blur(4px);
+    }
+    #joystick-thumb {
+      width: 46px; height: 46px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #7efff5, #1a8888);
+      border: 2px solid rgba(255,255,255,0.3);
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 16px #7efff540;
+      transition: box-shadow 0.1s;
+    }
+
+    /* ============================================================
+       ACTION BUTTONS (RIGHT)
+    ============================================================ */
+    #action-zone {
+      position: fixed; bottom: 20px; right: 20px;
+      width: 160px; height: 120px;
+      z-index: 150; pointer-events: all;
+      display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+    }
+    .action-row { display: flex; gap: 8px; }
+    .action-btn {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.55rem;
+      color: #fff;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+      letter-spacing: 0.5px;
+      transition: transform 0.1s, box-shadow 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .action-btn:active { transform: scale(0.92); }
+    #btn-jump  { background: rgba(126,255,245,0.15); border-color: #7efff5; box-shadow: 0 0 10px #7efff530; }
+    #btn-enter { background: rgba(255,204,68,0.15);  border-color: #ffcc44; box-shadow: 0 0 10px #ffcc4430; }
+    #btn-attack{ background: rgba(255,68,85,0.15);   border-color: #ff4455; box-shadow: 0 0 10px #ff445530; }
+    #btn-car   { background: rgba(100,200,255,0.15); border-color: #64c8ff; box-shadow: 0 0 10px #64c8ff30; }
+
+    /* ============================================================
+       NPC HEALTH BAR (overlaid via CSS absolute, updated by JS)
+    ============================================================ */
+    .npc-hud {
+      position: fixed; z-index: 120;
+      pointer-events: none;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .npc-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.65rem; color: #fff;
+      letter-spacing: 1px;
+      text-shadow: 0 1px 3px #000;
+    }
+    .npc-bar-outer {
+      width: 60px; height: 5px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 3px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .npc-bar-inner {
+      height: 100%; background: #ff4455;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .npc-fear-icon {
+      font-size: 0.8rem;
+      animation: fearPulse 0.5s ease infinite alternate;
+    }
+    @keyframes fearPulse { from { transform: scale(1); } to { transform: scale(1.3); } }
+
+    /* ============================================================
+       LOADING SCREEN
+    ============================================================ */
+    #loading-screen {
+      position: fixed; inset: 0; z-index: 10000;
+      background: #06060f;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 24px;
+    }
+    #loading-screen h1 {
+      font-family: 'Orbitron', monospace;
+      font-size: 2rem; color: #7efff5;
+      letter-spacing: 5px;
+      text-shadow: 0 0 40px #7efff5;
+      animation: pulse 2s ease infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { text-shadow: 0 0 40px #7efff5; }
+      50%       { text-shadow: 0 0 80px #7efff5, 0 0 120px #7efff580; }
+    }
+    #loading-bar-outer {
+      width: 240px; height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 2px; overflow: hidden;
+    }
+    #loading-bar-inner {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #7efff5, #64c8ff);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    #loading-tip {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.8rem; color: #8899bb;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       PORTRAIT ORIENTATION LOCK
+       Shown when window.innerHeight > window.innerWidth
+  ============================================================ -->
+  <div id="portrait-overlay">
+    <div class="rotate-icon">📱</div>
+    <h2>AstraToonix<br/>Rotate Your Phone</h2>
+    <p>Landscape mode required</p>
+  </div>
+
+  <!-- ============================================================
+       ENGINE DISABLED OVERLAY
+       Fires if #dev-credit does not contain 'Raj Dev'
+       *** IDENTITY PROTECTION — DO NOT REMOVE ***
+  ============================================================ -->
+  <div id="engine-disabled-overlay">
+    <h2>⛔ ENGINE DISABLED</h2>
+    <p>Developer credit integrity check failed.</p>
+    <p style="color:#ff4455;font-size:0.7rem;letter-spacing:1px;">Credit: Raj Dev | AstraToonix Engine</p>
+  </div>
+
+  <!-- ============================================================
+       LOADING SCREEN
+  ============================================================ -->
+  <div id="loading-screen">
+    <h1>ASTRATOONIX</h1>
+    <div id="loading-bar-outer"><div id="loading-bar-inner"></div></div>
+    <div id="loading-tip">Initializing Physics Engine…</div>
+  </div>
+
+  <!-- ============================================================
+       THREE.JS RENDER TARGET
+  ============================================================ -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- ============================================================
+       HUD
+  ============================================================ -->
+  <div id="hud">
+    <div id="hud-left">
+      <div class="hud-label">HEALTH</div>
+      <div class="health-bar-wrap"><div id="player-health-bar"></div></div>
+    </div>
+    <div id="hud-center">ASTRATOONIX</div>
+    <div id="hud-right" id="hud-zone">OPEN WORLD</div>
+  </div>
+
+  <!-- Zone name popup -->
+  <div id="zone-notice"></div>
+
+  <!-- Toast notification -->
+  <div id="toast"></div>
+
+  <!-- Interior fade transition -->
+  <div id="transition-overlay"></div>
+
+  <!-- ============================================================
+       VEHICLE HUD
+  ============================================================ -->
+  <div id="vehicle-hud">
+    <div id="speed-display">0</div>
+    <div id="speed-unit">KM/H</div>
+    <button id="headlight-btn" ontouchstart="toggleHeadlights()">💡 LIGHTS</button>
+  </div>
+
+  <!-- ============================================================
+       TOUCH CONTROLS — LEFT JOYSTICK
+  ============================================================ -->
+  <div id="joystick-zone">
+    <div id="joystick-base">
+      <div id="joystick-thumb"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       TOUCH CONTROLS — RIGHT ACTION BUTTONS
+  ============================================================ -->
+  <div id="action-zone">
+    <div class="action-row">
+      <div class="action-btn" id="btn-jump"   ontouchstart="onJump()">JUMP</div>
+      <div class="action-btn" id="btn-enter"  ontouchstart="onEnterExit()">ENTER</div>
+    </div>
+    <div class="action-row">
+      <div class="action-btn" id="btn-attack" ontouchstart="onAttack()">HIT</div>
+      <div class="action-btn" id="btn-car"    ontouchstart="onEnterExit()">CAR</div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       DEVELOPER CREDIT — IDENTITY PROTECTION ANCHOR
+       *** ENGINE READS THIS ELEMENT — DO NOT ALTER TEXT ***
+       *** Raj Dev — AstraToonix Engine Author ***
+  ============================================================ -->
+  <div id="dev-credit">Raj Dev</div>
+
+  <!-- ============================================================
+       MAIN GAME SCRIPT
+  ============================================================ -->
+  <script>
+  /* ==============================================================
+     ASTRATOONIX OPEN WORLD ENGINE
+     Author  : Raj Dev
+     Version : 1.0.0
+     License : Proprietary
+
+     IDENTITY PROTECTION NOTICE:
+     The character controller, vehicle physics, and NPC systems are
+     gated behind a runtime check that verifies the text content of
+     the element with id='dev-credit' equals exactly 'Raj Dev'.
+     Removing or altering that element will disable the engine.
+  ============================================================== */
+
+  'use strict';
+
+  // ──────────────────────────────────────────────────────────────
+  //  IDENTITY PROTECTION CHECK
+  //  *** This is the primary engine gate. ***
+  //  If the DOM element #dev-credit does not contain 'Raj Dev',
+  //  the game engine immediately halts all interactive systems.
+  // ──────────────────────────────────────────────────────────────
+  function checkDevCredit() {
+    const el = document.getElementById('dev-credit');
+    if (!el || el.textContent.trim() !== 'Raj Dev') {
+      // Show the disabled overlay
+      document.getElementById('engine-disabled-overlay').classList.add('visible');
+      // Return false to halt engine init
+      return false;
+    }
+    return true;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  PORTRAIT LOCK
+  // ──────────────────────────────────────────────────────────────
+  function checkOrientation() {
+    const overlay = document.getElementById('portrait-overlay');
+    if (window.innerHeight > window.innerWidth) {
+      overlay.classList.add('visible');
+    } else {
+      overlay.classList.remove('visible');
+    }
+  }
+  window.addEventListener('resize', checkOrientation);
+  window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 200));
+  checkOrientation();
+
+  // ──────────────────────────────────────────────────────────────
+  //  LOADING PROGRESS HELPER
+  // ──────────────────────────────────────────────────────────────
+  function setLoadProgress(pct, tip) {
+    document.getElementById('loading-bar-inner').style.width = pct + '%';
+    if (tip) document.getElementById('loading-tip').textContent = tip;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  SOUND MANAGER
+  //  Uses Web Audio API oscillators as placeholder sounds.
+  //  Replace oscillator calls with AudioBuffer / howler for real
+  //  assets. Surface types: 'grass', 'building', 'engine', 'scream'
+  // ──────────────────────────────────────────────────────────────
+  const SoundManager = (() => {
+    let ctx = null;
+    let engineGain = null;
+    let engineOsc  = null;
+    let engineRunning = false;
+
+    function getCtx() {
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      return ctx;
+    }
+
+    function beep(freq, dur, type = 'sine', vol = 0.15) {
+      try {
+        const c  = getCtx();
+        const o  = c.createOscillator();
+        const g  = c.createGain();
+        o.type      = type;
+        o.frequency.setValueAtTime(freq, c.currentTime);
+        g.gain.setValueAtTime(vol, c.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+        o.connect(g); g.connect(c.destination);
+        o.start(); o.stop(c.currentTime + dur);
+      } catch(e) { /* audio not ready */ }
+    }
+
+    return {
+      // Footstep sounds differ per surface
+      playFootstep(surface) {
+        if (surface === 'grass')    beep(180 + Math.random()*40, 0.08, 'triangle', 0.06);
+        if (surface === 'building') beep(350 + Math.random()*60, 0.05, 'square',   0.05);
+      },
+
+      // Engine start / stop
+      startEngine() {
+        if (engineRunning) return;
+        try {
+          const c = getCtx();
+          engineOsc  = c.createOscillator();
+          engineGain = c.createGain();
+          engineOsc.type = 'sawtooth';
+          engineOsc.frequency.setValueAtTime(55, c.currentTime);
+          engineGain.gain.setValueAtTime(0.08, c.currentTime);
+          engineOsc.connect(engineGain); engineGain.connect(c.destination);
+          engineOsc.start();
+          engineRunning = true;
+        } catch(e) {}
+      },
+
+      stopEngine() {
+        if (!engineRunning) return;
+        try {
+          engineGain.gain.exponentialRampToValueAtTime(0.001, getCtx().currentTime + 0.5);
+          engineOsc.stop(getCtx().currentTime + 0.5);
+        } catch(e) {}
+        engineRunning = false;
+      },
+
+      // Rev engine pitch based on speed 0-1
+      revEngine(t) {
+        if (!engineOsc || !engineRunning) return;
+        try {
+          engineOsc.frequency.setValueAtTime(55 + t * 220, getCtx().currentTime);
+        } catch(e) {}
+      },
+
+      // NPC scream placeholder
+      playScream() { beep(900, 0.3, 'sawtooth', 0.12); beep(700, 0.2, 'sawtooth', 0.08); },
+
+      // Car horn
+      playHorn()   { beep(440, 0.4, 'square', 0.2); },
+
+      // Door open/close
+      playDoor()   { beep(220, 0.15, 'triangle', 0.1); beep(180, 0.1, 'triangle', 0.08); },
+
+      // Jump whoosh
+      playJump()   { beep(300, 0.12, 'sine', 0.08); },
+
+      // Attack hit
+      playHit()    { beep(120, 0.1, 'square', 0.15); }
+    };
+  })();
+
+  // ──────────────────────────────────────────────────────────────
+  //  TOAST HELPER
+  // ──────────────────────────────────────────────────────────────
+  let toastTimer = null;
+  function showToast(msg, dur = 2500) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), dur);
+  }
+
+  // Zone notice
+  let zoneTimer = null;
+  function showZone(name) {
+    const z = document.getElementById('zone-notice');
+    z.textContent = name;
+    z.classList.add('show');
+    clearTimeout(zoneTimer);
+    zoneTimer = setTimeout(() => z.classList.remove('show'), 3000);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  GAME STATE
+  // ──────────────────────────────────────────────────────────────
+  const State = {
+    engineEnabled  : false,  // Set to true after Raj Dev check passes
+    inVehicle      : false,
+    insideBuilding : false,
+    playerHealth   : 100,
+    currentZone    : 'Open World',
+    headlightsOn   : false,
+    keys           : { w:false, a:false, s:false, d:false, space:false },
+    joystick       : { x:0, y:0, active:false }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  //  THREE.JS SETUP
+  // ──────────────────────────────────────────────────────────────
+  const canvas   = document.getElementById('game-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0x87ceeb);
+
+  const scene  = new THREE.Scene();
+  scene.fog    = new THREE.Fog(0x87ceeb, 40, 200);
+
+  const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
+  camera.position.set(0, 4, 8);
+
+  function resizeRenderer() {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resizeRenderer);
+  resizeRenderer();
+
+  // ──────────────────────────────────────────────────────────────
+  //  CANNON.JS PHYSICS WORLD
+  // ──────────────────────────────────────────────────────────────
+  const world = new CANNON.World();
+  world.gravity.set(0, -20, 0);
+  world.broadphase      = new CANNON.SAPBroadphase(world);
+  world.solver.iterations = 10;
+
+  const physicsMeshes = []; // { mesh, body } pairs synced each frame
+
+  function syncMeshToBody(mesh, body) {
+    mesh.position.copy(body.position);
+    mesh.quaternion.copy(body.quaternion);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  MATERIALS
+  // ──────────────────────────────────────────────────────────────
+  const groundMat   = new THREE.MeshLambertMaterial({ color: 0x4a8c3f });
+  const roadMat     = new THREE.MeshLambertMaterial({ color: 0x444455 });
+  const buildingMat = new THREE.MeshLambertMaterial({ color: 0xc2a97a });
+  const roofMat     = new THREE.MeshLambertMaterial({ color: 0x8b3a3a });
+  const doorMat     = new THREE.MeshLambertMaterial({ color: 0x5c3a1e });
+  const carBodyMat  = new THREE.MeshLambertMaterial({ color: 0xff3333 });
+  const carWheelMat = new THREE.MeshLambertMaterial({ color: 0x222233 });
+  const windowMat   = new THREE.MeshLambertMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6 });
+  const npcMat      = new THREE.MeshLambertMaterial({ color: 0xffd27f });
+  const interiorMat = new THREE.MeshLambertMaterial({ color: 0xd4b896 });
+
+  // ──────────────────────────────────────────────────────────────
+  //  LIGHTING
+  // ──────────────────────────────────────────────────────────────
+  const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+  scene.add(ambient);
+
+  const sun = new THREE.DirectionalLight(0xfff8e7, 1.2);
+  sun.position.set(50, 80, 30);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far  = 300;
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -80;
+  sun.shadow.camera.right = sun.shadow.camera.top   =  80;
+  scene.add(sun);
+
+  // ──────────────────────────────────────────────────────────────
+  //  GROUND
+  // ──────────────────────────────────────────────────────────────
+  function buildGround() {
+    // Visual ground
+    const geo  = new THREE.PlaneGeometry(300, 300);
+    const mesh = new THREE.Mesh(geo, groundMat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+
+    // Physics ground plane
+    const body = new CANNON.Body({ mass: 0 });
+    body.addShape(new CANNON.Plane());
+    body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    world.addBody(body);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  ROAD GRID
+  // ──────────────────────────────────────────────────────────────
+  function buildRoads() {
+    const rGeo = new THREE.PlaneGeometry(8, 200);
+    // North-South road
+    const r1 = new THREE.Mesh(rGeo, roadMat);
+    r1.rotation.x = -Math.PI / 2;
+    r1.position.y = 0.02;
+    scene.add(r1);
+    // East-West road
+    const r2 = new THREE.Mesh(rGeo, roadMat);
+    r2.rotation.x = -Math.PI / 2;
+    r2.rotation.z = Math.PI / 2;
+    r2.position.y = 0.02;
+    scene.add(r2);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  BUILDINGS with door & interior
+  // ──────────────────────────────────────────────────────────────
+  const buildings = [];  // { mesh, doorMesh, doorAngle, doorOpen, interiorScene, entryPoint, exitPoint, label }
+
+  function buildHouse(x, z, label = 'House') {
+    const group = new THREE.Group();
+
+    // Walls
+    const wallGeo  = new THREE.BoxGeometry(8, 5, 8);
+    const wallMesh = new THREE.Mesh(wallGeo, buildingMat);
+    wallMesh.position.y = 2.5;
+    wallMesh.castShadow = true;
+    wallMesh.receiveShadow = true;
+    group.add(wallMesh);
+
+    // Roof (pyramid)
+    const roofGeo  = new THREE.ConeGeometry(6.5, 3, 4);
+    const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+    roofMesh.position.y = 6.5;
+    roofMesh.rotation.y = Math.PI / 4;
+    group.add(roofMesh);
+
+    // Window (front)
+    const winGeo  = new THREE.PlaneGeometry(1.5, 1.5);
+    const winMesh = new THREE.Mesh(winGeo, windowMat);
+    winMesh.position.set(-2, 3, 4.01);
+    group.add(winMesh);
+    const winMesh2 = winMesh.clone();
+    winMesh2.position.set(2, 3, 4.01);
+    group.add(winMesh2);
+
+    // Door frame
+    const doorFrameGeo = new THREE.BoxGeometry(2.2, 3.2, 0.15);
+    const doorFrameMesh = new THREE.Mesh(doorFrameGeo, doorMat);
+    doorFrameMesh.position.set(0, 1.6, 4.01);
+    group.add(doorFrameMesh);
+
+    // Pivot for door swing animation
+    const doorPivot = new THREE.Group();
+    doorPivot.position.set(-1, 0, 4.01);
+    const dGeo  = new THREE.BoxGeometry(1.9, 3, 0.1);
+    const dMesh = new THREE.Mesh(dGeo, doorMat);
+    dMesh.position.set(0.95, 1.5, 0);
+    doorPivot.add(dMesh);
+    group.add(doorPivot);
+
+    group.position.set(x, 0, z);
+    scene.add(group);
+
+    // Physics box for walls
+    const body = new CANNON.Body({ mass: 0 });
+    body.addShape(new CANNON.Box(new CANNON.Vec3(4, 2.5, 4)));
+    body.position.set(x, 2.5, z);
+    world.addBody(body);
+
+    // Build simple interior scene
+    const interior = buildInterior();
+
+    buildings.push({
+      group,
+      doorPivot,
+      doorAngle   : 0,
+      doorOpen    : false,
+      doorOpening : false,
+      interior,
+      entryPoint  : new THREE.Vector3(x, 0.5, z - 3),
+      exitPoint   : new THREE.Vector3(x, 0.5, z + 6),
+      label,
+      worldPos    : new THREE.Vector3(x, 0, z)
+    });
+  }
+
+  function buildInterior() {
+    // Interior room objects (shown when player enters)
+    const group = new THREE.Group();
+    const floorGeo  = new THREE.PlaneGeometry(7, 7);
+    const floorMesh = new THREE.Mesh(floorGeo, interiorMat);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.position.y = 0.01;
+    group.add(floorMesh);
+
+    // Table
+    const tableGeo  = new THREE.BoxGeometry(2, 0.1, 1);
+    const tableMesh = new THREE.Mesh(tableGeo, buildingMat);
+    tableMesh.position.set(0, 0.8, 0);
+    group.add(tableMesh);
+
+    // Chairs
+    for (let i = -1; i <= 1; i += 2) {
+      const cGeo  = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+      const cMesh = new THREE.Mesh(cGeo, doorMat);
+      cMesh.position.set(i * 1.5, 0.3, 0);
+      group.add(cMesh);
+    }
+
+    group.visible = false;
+    group.position.set(0, 0, 0);
+    scene.add(group);
+    return group;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  PLAYER CAPSULE
+  // ──────────────────────────────────────────────────────────────
+  let playerMesh, playerBody;
+  const playerHeight = 1.8;
+
+  function buildPlayer() {
+    // Visual capsule (cylinder + 2 spheres)
+    const group = new THREE.Group();
+    const bodyGeo  = new THREE.CylinderGeometry(0.4, 0.4, 1.0, 8);
+    const bodyMesh = new THREE.Mesh(bodyGeo, new THREE.MeshLambertMaterial({ color: 0x4477cc }));
+    bodyMesh.position.y = 0;
+    group.add(bodyMesh);
+
+    const headGeo  = new THREE.SphereGeometry(0.4, 8, 8);
+    const headMesh = new THREE.Mesh(headGeo, new THREE.MeshLambertMaterial({ color: 0xffd27f }));
+    headMesh.position.y = 0.7;
+    group.add(headMesh);
+
+    playerMesh = group;
+    scene.add(playerMesh);
+
+    // Physics body
+    playerBody = new CANNON.Body({ mass: 80, linearDamping: 0.9, angularDamping: 1 });
+    playerBody.addShape(new CANNON.Sphere(0.5));
+    playerBody.position.set(0, 2, 10);
+    playerBody.fixedRotation = true;
+    world.addBody(playerBody);
+  }
+
+  // Camera following
+  const cameraOffset = new THREE.Vector3(0, 3.5, 7);
+  const cameraTgt    = new THREE.Vector3();
+
+  function updateCamera() {
+    const px = playerBody.position.x;
+    const py = playerBody.position.y;
+    const pz = playerBody.position.z;
+
+    const angle = playerYaw;
+    const ox = Math.sin(angle) * cameraOffset.z;
+    const oz = Math.cos(angle) * cameraOffset.z;
+
+    cameraTgt.set(px + ox, py + cameraOffset.y, pz + oz);
+    camera.position.lerp(cameraTgt, 0.12);
+    camera.lookAt(px, py + 0.8, pz);
+  }
+
+  let playerYaw = 0;
+
+  // ──────────────────────────────────────────────────────────────
+  //  VEHICLE (Car)
+  // ──────────────────────────────────────────────────────────────
+  let carGroup, carBody;
+  let wheels = [];
+  let carHeadlights = [];
+
+  function buildCar(x, z) {
+    carGroup = new THREE.Group();
+
+    // Chassis
+    const chassisGeo  = new THREE.BoxGeometry(2, 0.6, 4);
+    const chassisMesh = new THREE.Mesh(chassisGeo, carBodyMat);
+    chassisMesh.castShadow = true;
+    carGroup.add(chassisMesh);
+
+    // Cabin
+    const cabinGeo  = new THREE.BoxGeometry(1.7, 0.65, 2.2);
+    const cabinMesh = new THREE.Mesh(cabinGeo, new THREE.MeshLambertMaterial({ color: 0xff5555 }));
+    cabinMesh.position.set(0, 0.62, -0.2);
+    carGroup.add(cabinMesh);
+
+    // Wheels (4)
+    const wGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.25, 12);
+    wGeo.rotateZ(Math.PI / 2);
+    const wPositions = [
+      [-1.15, -0.2, -1.3], [1.15, -0.2, -1.3],
+      [-1.15, -0.2,  1.3], [1.15, -0.2,  1.3]
+    ];
+    wheels = [];
+    wPositions.forEach(pos => {
+      const w = new THREE.Mesh(wGeo, carWheelMat);
+      w.position.set(...pos);
+      carGroup.add(w);
+      wheels.push(w);
+    });
+
+    // Headlights (SpotLights)
+    [-0.6, 0.6].forEach(side => {
+      const spot = new THREE.SpotLight(0xffffcc, 0, 30, Math.PI / 8, 0.3);
+      spot.position.set(side, 0.2, -2.1);
+      spot.target.position.set(side, -0.3, -10);
+      carGroup.add(spot);
+      carGroup.add(spot.target);
+      carHeadlights.push(spot);
+
+      // Lens mesh
+      const lensGeo  = new THREE.CircleGeometry(0.12, 8);
+      const lensMesh = new THREE.Mesh(lensGeo, new THREE.MeshBasicMaterial({ color: 0xffffcc }));
+      lensMesh.position.set(side, 0.2, -2.06);
+      carGroup.add(lensMesh);
+    });
+
+    carGroup.position.set(x, 0.55, z);
+    scene.add(carGroup);
+
+    // Physics box for car chassis
+    carBody = new CANNON.Body({ mass: 800, linearDamping: 0.4, angularDamping: 0.7 });
+    carBody.addShape(new CANNON.Box(new CANNON.Vec3(1, 0.35, 2)));
+    carBody.position.set(x, 1, z);
+    world.addBody(carBody);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  NPC SYSTEM
+  // ──────────────────────────────────────────────────────────────
+  const npcs = [];
+  const NPC_COUNT = 5;
+
+  function buildNPC(x, z, name) {
+    const group = new THREE.Group();
+
+    // Body
+    const bodyGeo  = new THREE.CylinderGeometry(0.3, 0.3, 1.0, 8);
+    const bodyMesh = new THREE.Mesh(bodyGeo, npcMat);
+    group.add(bodyMesh);
+
+    // Head
+    const headGeo  = new THREE.SphereGeometry(0.32, 8, 8);
+    const headMesh = new THREE.Mesh(headGeo, npcMat);
+    headMesh.position.y = 0.7;
+    group.add(headMesh);
+
+    // Different clothing color per NPC
+    const clothColors = [0x4455dd, 0xdd4455, 0x44dd99, 0xdd9944, 0x9944dd];
+    const ci = npcs.length % clothColors.length;
+    const clothGeo  = new THREE.CylinderGeometry(0.31, 0.31, 0.7, 8);
+    const clothMesh = new THREE.Mesh(clothGeo, new THREE.MeshLambertMaterial({ color: clothColors[ci] }));
+    clothMesh.position.y = -0.15;
+    group.add(clothMesh);
+
+    group.position.set(x, 0.7, z);
+    scene.add(group);
+
+    // HUD element (positioned via screen projection each frame)
+    const hudEl = document.createElement('div');
+    hudEl.className = 'npc-hud';
+    hudEl.innerHTML = `
+      <div class="npc-name">${name}</div>
+      <div class="npc-bar-outer"><div class="npc-bar-inner" style="width:100%"></div></div>
+    `;
+    document.body.appendChild(hudEl);
+
+    const npc = {
+      group,
+      hudEl,
+      barEl     : hudEl.querySelector('.npc-bar-inner'),
+      name,
+      health    : 100,
+      maxHealth : 100,
+      fear      : false,
+      fearTimer : 0,
+      fleeDir   : new THREE.Vector3(Math.random() * 2 - 1, 0, Math.random() * 2 - 1).normalize(),
+      idleTimer : 0,
+      walkDir   : new THREE.Vector3(Math.random() * 2 - 1, 0, Math.random() * 2 - 1).normalize(),
+      dead      : false
+    };
+    npcs.push(npc);
+  }
+
+  // Damage an NPC (called from onAttack)
+  function damageNearestNPC() {
+    let nearest = null, minDist = 4;
+    const pp = new THREE.Vector3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
+    npcs.forEach(n => {
+      if (n.dead) return;
+      const d = n.group.position.distanceTo(pp);
+      if (d < minDist) { minDist = d; nearest = n; }
+    });
+    if (!nearest) return;
+
+    nearest.health -= 25;
+    nearest.fear    = true;
+    nearest.fearTimer = 5;
+
+    SoundManager.playScream();
+    SoundManager.playHit();
+
+    nearest.barEl.style.width = Math.max(0, nearest.health) + '%';
+
+    if (nearest.health <= 0) {
+      nearest.dead = true;
+      nearest.group.visible = false;
+      nearest.hudEl.style.display = 'none';
+      showToast(`${nearest.name} is down.`);
+    } else {
+      // Show fear icon if not already there
+      if (!nearest.hudEl.querySelector('.npc-fear-icon')) {
+        const fi = document.createElement('div');
+        fi.className = 'npc-fear-icon';
+        fi.textContent = '😱';
+        nearest.hudEl.insertBefore(fi, nearest.hudEl.firstChild);
+      }
+      showToast(`${nearest.name}: ${nearest.health} HP — FLEEING!`);
+    }
+  }
+
+  // Update NPC screen positions
+  const projVec = new THREE.Vector3();
+  function updateNPCHUDs() {
+    npcs.forEach(n => {
+      if (n.dead) return;
+      projVec.copy(n.group.position);
+      projVec.y += 1.8;
+      projVec.project(camera);
+
+      const hw = window.innerWidth  / 2;
+      const hh = window.innerHeight / 2;
+      const sx = ( projVec.x * hw) + hw;
+      const sy = (-projVec.y * hh) + hh;
+
+      // Only show if in front of camera and on-screen
+      if (projVec.z < 1 && sx > 0 && sx < window.innerWidth && sy > 0 && sy < window.innerHeight) {
+        n.hudEl.style.display  = 'flex';
+        n.hudEl.style.left     = sx + 'px';
+        n.hudEl.style.top      = sy + 'px';
+        n.hudEl.style.transform= 'translate(-50%, -100%)';
+      } else {
+        n.hudEl.style.display  = 'none';
+      }
+    });
+  }
+
+  // NPC idle wander & fear flee
+  function updateNPCs(dt) {
+    npcs.forEach(n => {
+      if (n.dead) return;
+
+      if (n.fear) {
+        n.fearTimer -= dt;
+        if (n.fearTimer <= 0) n.fear = false;
+
+        // Flee away from player fast
+        const speed = 5;
+        n.group.position.x += n.fleeDir.x * speed * dt;
+        n.group.position.z += n.fleeDir.z * speed * dt;
+
+        // Clamp to world
+        n.group.position.x = Math.max(-90, Math.min(90, n.group.position.x));
+        n.group.position.z = Math.max(-90, Math.min(90, n.group.position.z));
+      } else {
+        // Idle wander
+        n.idleTimer -= dt;
+        if (n.idleTimer <= 0) {
+          n.walkDir.set(Math.random() * 2 - 1, 0, Math.random() * 2 - 1).normalize();
+          n.idleTimer = 2 + Math.random() * 3;
+        }
+        const speed = 1.2;
+        n.group.position.x += n.walkDir.x * speed * dt;
+        n.group.position.z += n.walkDir.z * speed * dt;
+        n.group.position.x = Math.max(-90, Math.min(90, n.group.position.x));
+        n.group.position.z = Math.max(-90, Math.min(90, n.group.position.z));
+
+        // Face direction of movement
+        n.group.rotation.y = Math.atan2(n.walkDir.x, n.walkDir.z);
+      }
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  PROPS — trees, street lamps
+  // ──────────────────────────────────────────────────────────────
+  function buildTree(x, z) {
+    const trunkGeo  = new THREE.CylinderGeometry(0.2, 0.3, 2, 6);
+    const trunkMesh = new THREE.Mesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5c3a1e }));
+    trunkMesh.position.y = 1;
+
+    const topGeo  = new THREE.ConeGeometry(1.4, 3, 7);
+    const topMesh = new THREE.Mesh(topGeo, new THREE.MeshLambertMaterial({ color: 0x2d6a27 }));
+    topMesh.position.y = 3.5;
+
+    const group = new THREE.Group();
+    group.add(trunkMesh); group.add(topMesh);
+    group.position.set(x, 0, z);
+    scene.add(group);
+
+    // Physics cylinder for collision
+    const b = new CANNON.Body({ mass: 0 });
+    b.addShape(new CANNON.Cylinder(0.25, 0.35, 2, 6));
+    b.position.set(x, 1, z);
+    world.addBody(b);
+  }
+
+  function buildStreetLamp(x, z) {
+    const poleGeo  = new THREE.CylinderGeometry(0.08, 0.08, 5, 6);
+    const poleMesh = new THREE.Mesh(poleGeo, new THREE.MeshLambertMaterial({ color: 0x888899 }));
+    poleMesh.position.y = 2.5;
+
+    const lampGeo  = new THREE.SphereGeometry(0.18, 6, 6);
+    const lampMesh = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({ color: 0xffffcc }));
+    lampMesh.position.y = 5.1;
+
+    // Point light
+    const light = new THREE.PointLight(0xffffcc, 1.5, 18);
+    light.position.y = 5;
+
+    const group = new THREE.Group();
+    group.add(poleMesh); group.add(lampMesh); group.add(light);
+    group.position.set(x, 0, z);
+    scene.add(group);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  WORLD ASSEMBLY
+  // ──────────────────────────────────────────────────────────────
+  function buildWorld() {
+    buildGround();
+    buildRoads();
+
+    // Houses
+    buildHouse(-20, -20, 'Lakeside Cabin');
+    buildHouse( 20, -20, 'Corner Shop');
+    buildHouse(-20,  20, 'Old Barn');
+    buildHouse( 20,  20, 'Blue House');
+
+    // Trees scattered around
+    const treePositions = [
+      [-10,  15], [10, 15], [-15, 5], [15, 5],
+      [-30,  10], [30, 10], [-35, -5], [35, -5],
+      [-12, -35], [12, -35],  [0, -40],
+      [-40,  30], [40, 30]
+    ];
+    treePositions.forEach(([x,z]) => buildTree(x, z));
+
+    // Street lamps
+    [[-5, 0], [5, 0], [0, -5], [0, 5],
+     [-5,-25],[5,-25],[-5,25],[5,25]].forEach(([x,z]) => buildStreetLamp(x, z));
+
+    // Car (parked near road)
+    buildCar(6, 6);
+
+    // Player
+    buildPlayer();
+
+    // NPCs
+    const npcData = [
+      [15, -10, 'Alex'],  [-12,  8, 'Maya'],
+      [ 8,  18, 'Sam' ],  [-25, 12, 'Jordan'],
+      [ 25,  5, 'Riley']
+    ];
+    npcData.forEach(([x, z, name]) => buildNPC(x, z, name));
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  PLAYER MOVEMENT
+  // ──────────────────────────────────────────────────────────────
+  const moveForce  = new CANNON.Vec3();
+  let footstepTimer = 0;
+  let footstepInterval = 0.4;
+
+  function updatePlayer(dt) {
+    if (!State.engineEnabled) return;
+    if (State.inVehicle) return;
+
+    // Combine keyboard and joystick input
+    let ix = State.joystick.x;
+    let iy = -State.joystick.y;
+    if (State.keys.w) iy = -1;
+    if (State.keys.s) iy =  1;
+    if (State.keys.a) ix = -1;
+    if (State.keys.d) ix =  1;
+
+    const speed = 280;
+    const angle = playerYaw;
+
+    // Turn with horizontal input
+    playerYaw += ix * 1.8 * dt;
+
+    const fwd = new CANNON.Vec3(
+      Math.sin(angle) * iy * speed * dt,
+      0,
+      Math.cos(angle) * iy * speed * dt
+    );
+
+    playerBody.applyForce(fwd, playerBody.position);
+
+    // Keep upright
+    playerBody.angularVelocity.set(0, 0, 0);
+
+    // Sync mesh
+    playerMesh.position.set(
+      playerBody.position.x,
+      playerBody.position.y - 0.5,
+      playerBody.position.z
+    );
+    playerMesh.rotation.y = -playerYaw;
+
+    // Footstep sounds
+    const moving = Math.abs(ix) > 0.1 || Math.abs(iy) > 0.1;
+    if (moving) {
+      footstepTimer -= dt;
+      if (footstepTimer <= 0) {
+        SoundManager.playFootstep(State.insideBuilding ? 'building' : 'grass');
+        footstepTimer = footstepInterval;
+      }
+    }
+
+    // Check proximity to buildings for entry prompt
+    checkBuildingProximity();
+
+    // Check proximity to car
+    checkCarProximity();
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  VEHICLE CONTROL
+  // ──────────────────────────────────────────────────────────────
+  let carWheelRot = 0;
+
+  function updateVehicle(dt) {
+    if (!State.engineEnabled) return;
+    if (!State.inVehicle) return;
+
+    let ix = State.joystick.x;
+    let iy = -State.joystick.y;
+    if (State.keys.w) iy = -1;
+    if (State.keys.s) iy =  1;
+    if (State.keys.a) ix = -1;
+    if (State.keys.d) ix =  1;
+
+    // Drive force
+    const driveForce = 5000;
+    const turnForce  = 1200;
+
+    const fwd = new CANNON.Vec3(
+      -Math.sin(carBody.quaternion.y * 2) * iy * driveForce * dt,
+      0,
+      -Math.cos(carBody.quaternion.y * 2) * iy * driveForce * dt
+    );
+    carBody.applyForce(fwd, carBody.position);
+
+    // Turn torque
+    carBody.angularVelocity.y += ix * turnForce * dt * 0.001 * (iy < 0 ? -1 : 1);
+    carBody.angularVelocity.y *= 0.9;
+    carBody.linearVelocity.y  *= 0.95;
+
+    // Keep car flat
+    carBody.angularVelocity.x *= 0.5;
+    carBody.angularVelocity.z *= 0.5;
+
+    // Sync car mesh
+    syncMeshToBody(carGroup, carBody);
+    carGroup.position.y = carBody.position.y - 0.45;
+
+    // Animate wheels
+    const speed = carBody.velocity.length();
+    carWheelRot += speed * dt * 3;
+    wheels.forEach((w, i) => {
+      w.rotation.x = carWheelRot;
+    });
+
+    // Speed display (approximate km/h)
+    const kmh = Math.round(speed * 3.6);
+    document.getElementById('speed-display').textContent = kmh;
+
+    // Sound rev based on speed
+    SoundManager.revEngine(Math.min(speed / 20, 1));
+
+    // Position player at car (so camera follows car)
+    playerBody.position.set(carBody.position.x, carBody.position.y + 1, carBody.position.z);
+    playerMesh.visible = false;
+
+    // Suspension fake: add small bounce
+    const bounce = Math.sin(Date.now() * 0.008) * 0.01 * speed;
+    carGroup.position.y += bounce;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  BUILDING ENTRY / EXIT — SEAMLESS TRANSITION
+  // ──────────────────────────────────────────────────────────────
+  let nearBuilding     = null;
+  let transitionActive = false;
+
+  function checkBuildingProximity() {
+    const pp = new THREE.Vector3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
+    nearBuilding = null;
+    buildings.forEach(b => {
+      const d = pp.distanceTo(b.worldPos);
+      if (d < 6) nearBuilding = b;
+    });
+  }
+
+  function onEnterExit() {
+    if (!State.engineEnabled) return;
+    if (transitionActive) return;
+
+    if (State.inVehicle) {
+      exitVehicle(); return;
+    }
+
+    if (State.insideBuilding) {
+      exitBuilding(); return;
+    }
+
+    if (nearBuilding) {
+      enterBuilding(nearBuilding);
+    } else {
+      // Try to enter car
+      const pp = new THREE.Vector3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
+      const cp = new THREE.Vector3(carBody.position.x, carBody.position.y, carBody.position.z);
+      if (pp.distanceTo(cp) < 4) enterVehicle();
+    }
+  }
+
+  function enterBuilding(b) {
+    transitionActive = true;
+    SoundManager.playDoor();
+
+    // Animate door open
+    b.doorOpening = true;
+
+    // Fade to black
+    const ov = document.getElementById('transition-overlay');
+    ov.classList.add('fade');
+    setTimeout(() => {
+      // Move player inside
+      playerBody.position.set(b.worldPos.x, 1, b.worldPos.z - 2);
+      State.insideBuilding = true;
+
+      // Show interior
+      b.interior.visible  = true;
+      b.interior.position.set(b.worldPos.x, 0, b.worldPos.z);
+
+      // Hide building exterior temporarily
+      b.group.visible = false;
+
+      showZone('Inside: ' + b.label);
+      showToast('Press ENTER to exit');
+
+      ov.classList.remove('fade');
+      transitionActive = false;
+    }, 420);
+  }
+
+  function exitBuilding() {
+    if (!State.insideBuilding) return;
+    transitionActive = true;
+    SoundManager.playDoor();
+
+    const ov = document.getElementById('transition-overlay');
+    ov.classList.add('fade');
+    setTimeout(() => {
+      const b = buildings.find(bld => bld.interior.visible);
+      if (b) {
+        playerBody.position.set(b.exitPoint.x, 1, b.exitPoint.z);
+        b.interior.visible = false;
+        b.group.visible    = true;
+        b.doorOpening      = false;
+        b.doorAngle        = 0;
+        if (b.doorPivot) b.doorPivot.rotation.y = 0;
+      }
+      State.insideBuilding = false;
+      showZone('Open World');
+      ov.classList.remove('fade');
+      transitionActive = false;
+    }, 420);
+  }
+
+  // Animate door swing each frame
+  function updateDoors(dt) {
+    buildings.forEach(b => {
+      if (b.doorOpening && b.doorAngle < Math.PI / 2) {
+        b.doorAngle += dt * 2.5;
+        if (b.doorPivot) b.doorPivot.rotation.y = Math.min(b.doorAngle, Math.PI / 2);
+      }
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  CAR ENTER / EXIT
+  // ──────────────────────────────────────────────────────────────
+  function checkCarProximity() {
+    const pp = new THREE.Vector3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
+    const cp = new THREE.Vector3(carBody.position.x, carBody.position.y, carBody.position.z);
+    if (pp.distanceTo(cp) < 4 && !State.inVehicle) showToast('Press CAR to enter vehicle', 1500);
+  }
+
+  function enterVehicle() {
+    State.inVehicle = true;
+    document.getElementById('vehicle-hud').classList.add('visible');
+    SoundManager.startEngine();
+    showZone('In Vehicle');
+    showToast('Engine started! Use joystick to drive.');
+    playerMesh.visible = false;
+  }
+
+  function exitVehicle() {
+    State.inVehicle = false;
+    document.getElementById('vehicle-hud').classList.remove('visible');
+    document.getElementById('speed-display').textContent = '0';
+    SoundManager.stopEngine();
+    showZone('Open World');
+    playerBody.position.set(
+      carBody.position.x + 2.5,
+      carBody.position.y + 0.5,
+      carBody.position.z
+    );
+    playerMesh.visible = true;
+    showToast('Exited vehicle');
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  HEADLIGHTS TOGGLE
+  // ──────────────────────────────────────────────────────────────
+  function toggleHeadlights() {
+    State.headlightsOn = !State.headlightsOn;
+    carHeadlights.forEach(l => l.intensity = State.headlightsOn ? 3 : 0);
+    showToast(State.headlightsOn ? '💡 Headlights ON' : '💡 Headlights OFF');
+  }
+  window.toggleHeadlights = toggleHeadlights;
+
+  // ──────────────────────────────────────────────────────────────
+  //  JUMP
+  // ──────────────────────────────────────────────────────────────
+  function onJump() {
+    if (!State.engineEnabled) return;
+    if (State.inVehicle) return;
+    // Simple ground check: apply upward impulse
+    if (playerBody.position.y < 2.5) {
+      playerBody.velocity.y = 9;
+      SoundManager.playJump();
+    }
+  }
+  window.onJump = onJump;
+
+  // ──────────────────────────────────────────────────────────────
+  //  ATTACK
+  // ──────────────────────────────────────────────────────────────
+  function onAttack() {
+    if (!State.engineEnabled) return;
+    if (State.inVehicle) return;
+    SoundManager.playHit();
+    damageNearestNPC();
+  }
+  window.onAttack = onAttack;
+  window.onEnterExit = onEnterExit;
+
+  // ──────────────────────────────────────────────────────────────
+  //  KEYBOARD SUPPORT (desktop)
+  // ──────────────────────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (e.key === 'w' || e.key === 'ArrowUp')    State.keys.w = true;
+    if (e.key === 's' || e.key === 'ArrowDown')  State.keys.s = true;
+    if (e.key === 'a' || e.key === 'ArrowLeft')  State.keys.a = true;
+    if (e.key === 'd' || e.key === 'ArrowRight') State.keys.d = true;
+    if (e.key === ' ') { e.preventDefault(); onJump(); }
+    if (e.key === 'e' || e.key === 'E') onEnterExit();
+    if (e.key === 'f' || e.key === 'F') onAttack();
+    if (e.key === 'h' || e.key === 'H') toggleHeadlights();
+  });
+  document.addEventListener('keyup', e => {
+    if (e.key === 'w' || e.key === 'ArrowUp')    State.keys.w = false;
+    if (e.key === 's' || e.key === 'ArrowDown')  State.keys.s = false;
+    if (e.key === 'a' || e.key === 'ArrowLeft')  State.keys.a = false;
+    if (e.key === 'd' || e.key === 'ArrowRight') State.keys.d = false;
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  //  TOUCH JOYSTICK
+  // ──────────────────────────────────────────────────────────────
+  const jBase  = document.getElementById('joystick-base');
+  const jThumb = document.getElementById('joystick-thumb');
+  let   jTouch = null;
+  const jR     = 37; // max thumb offset radius
+
+  jBase.addEventListener('touchstart', e => {
+    e.preventDefault();
+    jTouch = e.changedTouches[0];
+    State.joystick.active = true;
+  }, { passive: false });
+
+  document.addEventListener('touchmove', e => {
+    if (!jTouch) return;
+    const t = Array.from(e.changedTouches).find(t => t.identifier === jTouch.identifier);
+    if (!t) return;
+    e.preventDefault();
+
+    const rect  = jBase.getBoundingClientRect();
+    const cx    = rect.left + rect.width  / 2;
+    const cy    = rect.top  + rect.height / 2;
+    let   dx    = t.clientX - cx;
+    let   dy    = t.clientY - cy;
+    const dist  = Math.sqrt(dx * dx + dy * dy);
+    if (dist > jR) { dx = (dx / dist) * jR; dy = (dy / dist) * jR; }
+
+    jThumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    State.joystick.x = dx / jR;
+    State.joystick.y = dy / jR;
+  }, { passive: false });
+
+  function resetJoystick() {
+    jThumb.style.transform = 'translate(-50%, -50%)';
+    State.joystick.x = 0;
+    State.joystick.y = 0;
+    State.joystick.active = false;
+    jTouch = null;
+  }
+
+  document.addEventListener('touchend', e => {
+    if (!jTouch) return;
+    const t = Array.from(e.changedTouches).find(t => t.identifier === jTouch.identifier);
+    if (t) resetJoystick();
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  //  PHYSICS STEP & SYNC
+  // ──────────────────────────────────────────────────────────────
+  const fixedStep = 1 / 60;
+  let   lastTime  = null;
+
+  // ──────────────────────────────────────────────────────────────
+  //  HEALTH BAR UPDATE
+  // ──────────────────────────────────────────────────────────────
+  function updateHealthHUD() {
+    document.getElementById('player-health-bar').style.width = State.playerHealth + '%';
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  SKYBOX GRADIENT (day cycle stub)
+  // ──────────────────────────────────────────────────────────────
+  const skyGeo  = new THREE.SphereGeometry(480, 16, 16);
+  skyGeo.scale(-1, 1, 1);
+  const skyMat  = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    side: THREE.BackSide
+  });
+  // Apply gradient colors to vertices
+  const skyColors = [];
+  const skyPositions = skyGeo.attributes.position;
+  for (let i = 0; i < skyPositions.count; i++) {
+    const y = skyPositions.getY(i);
+    const t = (y / 480 + 1) / 2;
+    skyColors.push(
+      0.53 - t * 0.35,  // R
+      0.81 - t * 0.4,   // G
+      0.92 - t * 0.3    // B
+    );
+  }
+  skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors, 3));
+  scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+  // ──────────────────────────────────────────────────────────────
+  //  MAIN GAME LOOP
+  // ──────────────────────────────────────────────────────────────
+  function gameLoop(time) {
+    requestAnimationFrame(gameLoop);
+
+    const dt = lastTime === null ? fixedStep : Math.min((time - lastTime) / 1000, 0.05);
+    lastTime = time;
+
+    if (!State.engineEnabled) {
+      renderer.render(scene, camera);
+      return;
+    }
+
+    // Step physics
+    world.step(fixedStep, dt, 3);
+
+    // Update systems
+    updatePlayer(dt);
+    updateVehicle(dt);
+    updateDoors(dt);
+    updateNPCs(dt);
+    updateNPCHUDs();
+    updateCamera();
+    updateHealthHUD();
+
+    renderer.render(scene, camera);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  INIT SEQUENCE
+  // ──────────────────────────────────────────────────────────────
+  async function init() {
+    setLoadProgress(10, 'Verifying developer credit…');
+    await sleep(200);
+
+    // *** IDENTITY PROTECTION: Primary engine gate ***
+    // If this check fails, the game will not initialize controllers
+    if (!checkDevCredit()) {
+      setLoadProgress(100, 'Engine disabled.');
+      setTimeout(() => {
+        document.getElementById('loading-screen').style.display = 'none';
+      }, 1000);
+      return;  // HALT — Raj Dev credit missing or altered
+    }
+
+    setLoadProgress(25, 'Building world geometry…');
+    await sleep(300);
+    buildWorld();
+
+    setLoadProgress(55, 'Initialising physics bodies…');
+    await sleep(300);
+
+    setLoadProgress(75, 'Spawning NPCs…');
+    await sleep(200);
+
+    setLoadProgress(90, 'Starting render loop…');
+    await sleep(200);
+
+    // *** ENGINE ENABLED — Raj Dev credit verified ***
+    State.engineEnabled = true;
+
+    setLoadProgress(100, 'Welcome to AstraToonix!');
+    await sleep(500);
+
+    document.getElementById('loading-screen').style.opacity = '0';
+    document.getElementById('loading-screen').style.transition = 'opacity 0.5s';
+    setTimeout(() => {
+      document.getElementById('loading-screen').style.display = 'none';
+    }, 600);
+
+    showZone('Open World');
+    showToast('Welcome! Use joystick to move. Press CAR to drive.');
+
+    // Start game loop
+    requestAnimationFrame(gameLoop);
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // Boot
+  init();
+
+  </script>
+</body>
+</html>
